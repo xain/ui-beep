@@ -1,13 +1,13 @@
 /**
- * Package-owned invariant companion for `@xain/dsh-client-ui-beep`.
- * @module @xain/dsh-client-ui-beep/invariant
+ * Package-owned invariant companion for `@xain_npm/dsh-client-ui-beep`.
+ * @module @xain_npm/dsh-client-ui-beep/invariant
  */
 
 /* jscpd:ignore-start */
 import type { Context } from '@deepseek-ai/cordis'
 import type { InvariantInstaller } from '@deepseek-ai/dsh-invariants'
 
-const PACKAGE_NAME = '@xain/dsh-client-ui-beep'
+const PACKAGE_NAME = '@xain_npm/dsh-client-ui-beep'
 
 /** Cordis companion plugin name. */
 export const name = 'client-ui-beep-invariant'

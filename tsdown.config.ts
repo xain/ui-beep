@@ -15,7 +15,7 @@
  */
 import { defineConfig } from 'tsdown'
 
-const ID = '@xain/dsh-client-ui-beep'
+const ID = '@xain_npm/dsh-client-ui-beep'
 
 /** Force `.js` output names regardless of format (matches the DSH contract). */
 const jsExtensions = () => ({ js: '.js' })

@@ -1,4 +1,4 @@
-# @xain/dsh-client-ui-beep
+# @xain_npm/dsh-client-ui-beep
 
 English | [中文](README.zh.md)
 
@@ -13,7 +13,7 @@ English | [中文](README.zh.md)
 ## Installation & usage
 
 ```sh
-npm install @xain/dsh-client-ui-beep
+npm install @xain_npm/dsh-client-ui-beep
 # or: pnpm add / yarn add
 ```
 
@@ -22,7 +22,7 @@ web client row:
 
 ```yaml
 - id: ui-beep
-  name: '@xain/dsh-client-ui-beep'
+  name: '@xain_npm/dsh-client-ui-beep'
   config:
     volume: 0.5      # master gain 0…1
     enabled: true    # false silences everything
@@ -75,7 +75,7 @@ The cordis row accepts a `config:` object (all optional):
 
 ```yaml
 - id: ui-beep
-  name: '@xain/dsh-client-ui-beep'
+  name: '@xain_npm/dsh-client-ui-beep'
   config:
     volume: 0.5                    # master gain 0…1
     enabled: true                  # false silences everything

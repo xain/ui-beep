@@ -1,4 +1,4 @@
-# @xain/dsh-client-ui-beep
+# @xain_npm/dsh-client-ui-beep
 
 [English](README.md) | 中文
 
@@ -38,7 +38,7 @@ cordis 行可接受 `config:` 对象（所有字段均可选）：
 
 ```yaml
 - id: ui-beep
-  name: '@xain/dsh-client-ui-beep'
+  name: '@xain_npm/dsh-client-ui-beep'
   config:
     volume: 0.5                    # 主音量 0…1
     enabled: true                  # false 时完全静音
