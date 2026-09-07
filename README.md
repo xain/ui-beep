@@ -56,12 +56,12 @@ The mapping is an AgentPulse heritage: the agent working → a low heartbeat hum
 
 ## How it works
 
-The browser half observes two React-free runtime faces:
+The browser half observes three React-free observable faces:
 
-- **`ctx.sessions.list`** (an `ObservableSnapshot<SessionListState>`): every session row's `running` and `pendingInteraction` bits.
+- **`ctx.sessions.list`** (an `ObservableSnapshot<SessionListState>`): every session row's `running` bit.
   - `running` is the **busy** signal: it stays true for a whole turn, from prompt admission through tool execution and reasoning. While **any** session is running, the low **hum** repeats on a fixed interval (default 4 s, configurable) — first beat immediate when work begins (or on page load, if a session is already mid-work). The hum **pauses** only while the current session is *actively* streaming visible output (ticks take over — "streaming" means text growth within the last 1.5 s, configurable) and while **any** session holds a pending interaction (the chime already alerted you). It **resumes ~1.5 s after output stops** — even when the agent keeps working (a tool call after a message) — and when the interaction clears. It stops entirely when the last running session goes idle. This is level-based: it is the "something is working" indicator. The tone itself is a soft low lub-dub heartbeat (two gentle sine swells around 90–120 Hz with slow attacks) — reassuring, not urgent.
-  - A 0→1 appearance of `pendingInteraction` (approval / plan-review / question) **chimes**. Decisions are *edges*, never levels — a session that stays pending does not re-chime on every refresh. An interaction that stays **unanswered** re-chimes after 10 s and then every 30 s (both configurable) until it is answered or the session disappears; an interaction already pending when the page loads starts the same reminder ladder (no immediate chime).
-- **the current session's conversation observable** (`binding.session`, an `ObservableSnapshot<ConversationSnapshot>`): its notifier fires on every streaming frame; visible output text growth fires the **tick** at the render cadence (the audio engine's debounce adds a hard floor).
+- **`ctx.uiSession.pendingInteractions`** (an `ObservableSnapshot<SessionPendingInteractionSnapshot>`): every session's effective pending interaction (approval / plan-review / question). A 0→1 appearance for a session **chimes**. Decisions are *edges*, never levels — a session that stays pending does not re-chime on every refresh. An interaction that stays **unanswered** re-chimes after 10 s and then every 30 s (both configurable) until it is answered or the session disappears; an interaction already pending when the page loads starts the same reminder ladder (no immediate chime).
+- **the current session's Conversation snapshot** (`uiConversation.binding(id).snapshot`, an `ObservableSnapshot<ConversationSnapshot>`): its notifier fires on every assembled frame; visible output text growth in the chat target's live `partial` fires the **tick** at the render cadence (the audio engine's debounce adds a hard floor).
 
 All tones are synthesized in code with linear fade in/out envelopes — no asset files, no clicks or pops on rapid state flips. Each voice is debounced to a 50 ms minimum interval.
 

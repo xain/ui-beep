@@ -18,7 +18,7 @@
  * HMR dispose cleanly. No host half behavior; the node half exists only so the
  * plugin appears in the Loader.
  */
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { Context } from '@deepseek-ai/cordis'
 import { BeepAudio, type BeepVoice } from './audio.ts'
 import { watchBeepState } from './watch.ts'
 
@@ -38,8 +38,9 @@ export interface BeepConfig {
   streamingPauseMs?: number
 }
 
-/** Required services: the sessions face is the only runtime dependency. */
-export const inject = ['sessions']
+/** Required services: the sessions list, the pending-interaction registry, and
+ *  the Conversation assembly the beep watcher reads. */
+export const inject = ['sessions', 'uiSession', 'uiConversation']
 
 /**
  * Client plugin body: build the audio engine, bind the first-gesture arm, and
@@ -47,7 +48,7 @@ export const inject = ['sessions']
  * @param ctx - client root context.
  * @param config - row config; falls back to defaults.
  */
-export function apply(ctx: ClientContext, config?: BeepConfig): void {
+export function apply(ctx: Context, config?: BeepConfig): void {
   const audio = new BeepAudio(config?.volume === undefined ? {} : { volume: config.volume })
   audio.bindGesture()
   const enabled = config?.enabled ?? true

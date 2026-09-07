@@ -1,18 +1,17 @@
 /**
  * Beep state watcher: translates live session facts into beep voices.
  *
- * Sources (both are the React-free observable faces of the client runtime):
- * - `ctx.sessions.list` — every session row's `running` and
- *   `pendingInteraction` bits. `running` is the "agent is busy" signal: a
- *   model request in flight ("Deep diving…"), tool execution (running code,
- *   reading files), and reasoning all keep it true while they happen.
- *   `pendingInteraction` marks a host interaction blocking a session
- *   (approval / plan review / question) — the agent is waiting on the user,
- *   not working.
- * - the current session's conversation observable (`binding.session`, itself
- *   an `ObservableSnapshot<ConversationSnapshot>`) — its notifier fires on
- *   every streaming frame, and the live `partial` visible text growth drives
- *   the output tick.
+ * Sources (all are React-free observable faces of the assembled client):
+ * - `ctx.sessions.list` — every session row's `running` bit. `running` is the
+ *   "agent is busy" signal: a model request in flight ("Deep diving…"), tool
+ *   execution (running code, reading files), and reasoning all keep it true
+ *   while they happen.
+ * - `ctx.uiSession.pendingInteractions` — every session's effective pending
+ *   interaction (approval / plan review / question), published by the
+ *   Session-scoped UI owners. The agent is waiting on the user, not working.
+ * - the current session's Conversation snapshot (`uiConversation.binding(id)
+ *   .snapshot`): its notifier fires on every assembled frame, and the chat
+ *   target's live `partial` visible text growth drives the output tick.
  *
  * Voice mapping (AgentPulse heritage, one voice at a time):
  * - **hum** — any session is busy (working) AND no session awaits your input
@@ -27,13 +26,20 @@
  * - **tick** — the current session's partial visible text grows (output
  *   streaming). Edge-based on cumulative text length, so a growing stream
  *   ticks while a paused one stays silent.
- * - **chime** — any session flips to a `pendingInteraction` (it awaits you).
+ * - **chime** — any session gains a pending interaction (it awaits you).
  *   Edge-based: a session that stays pending does not re-chime, and the first
  *   observation of a session is a silent baseline. An interaction that stays
  *   unanswered re-chimes after 10 s and then every 30 s until it is answered.
  */
 
-import type { ClientContext, ConversationSnapshot, SessionId } from '@deepseek-ai/dsh-client-runtime/client'
+import type { Context } from '@deepseek-ai/cordis'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
+// Type-only: pulls the chat view snapshot into the ConversationViewSnapshotMap
+// and the sessions/uiSession/uiConversation Context service merges.
+import type {} from '@deepseek-ai/dsh-api-session-controller/client'
+import type {} from '@deepseek-ai/dsh-client-ui-session/client'
+import type { ConversationSnapshot } from '@deepseek-ai/dsh-client-ui-conversation/client'
+import type {} from '@deepseek-ai/dsh-client-ui-chat/client'
 import type { BeepVoice } from './audio.ts'
 
 /** Default heartbeat period while the agent is busy. */
@@ -75,7 +81,7 @@ export interface BeepWatcherOptions {
 
 /** Cumulative length of the visible text in the in-progress assistant output. */
 function partialTextLength(snapshot: ConversationSnapshot): number {
-  const partial = snapshot.partial
+  const partial = snapshot.views.get('chat')?.legacy.partial ?? null
   if (partial === null) return 0
   let length = 0
   for (const block of partial.blocks) {
@@ -86,13 +92,14 @@ function partialTextLength(snapshot: ConversationSnapshot): number {
 
 /**
  * Watch session state and fire beep voices on transitions.
- * @param ctx - client root context (must provide `sessions`).
+ * @param ctx - client root context (must provide `sessions`, `uiSession`, and
+ *   `uiConversation`).
  * @param callbacks - voice sink.
  * @param options - tuning knobs.
  * @returns disposer that unsubscribes every watcher.
  */
 export function watchBeepState(
-  ctx: ClientContext,
+  ctx: Context,
   callbacks: BeepWatcherCallbacks,
   options: BeepWatcherOptions = {},
 ): () => void {
@@ -187,9 +194,9 @@ export function watchBeepState(
   }
 
   // ── current-session conversation watcher: output tick + streaming flag ───
-  // The session's own notifier fires on every streaming frame (markFrameDirty
-  // → rAF flush); the list observable does not. Re-subscribe whenever the
-  // current session changes or a binding becomes available.
+  // The Conversation binding's snapshot notifier fires on every assembled
+  // frame (rAF-flushed); the sessions list observable does not. Re-subscribe
+  // whenever the current session changes or a binding becomes available.
   let currentId: SessionId | undefined
   let stopConversation: (() => void) | undefined
   let lastTextLength = 0
@@ -206,13 +213,15 @@ export function watchBeepState(
       evaluateHeartbeat()
       return
     }
-    const binding = ctx.sessions.binding(current)
-    if (binding === undefined) {
+    // uiConversation.binding throws for an unknown session, so gate on the
+    // sessions binding first (a listed row without a materialized binding).
+    if (ctx.sessions.binding(current) === undefined) {
       evaluateHeartbeat()
       return
     }
+    const conversation = ctx.uiConversation.binding(current)
     const handleConversation = (): void => {
-      const snapshot: ConversationSnapshot = binding.session.getSnapshot()
+      const snapshot = conversation.snapshot.getSnapshot()
       const textLength = partialTextLength(snapshot)
       if (textLength > lastTextLength) {
         lastTextLength = textLength
@@ -224,24 +233,24 @@ export function watchBeepState(
       }
       evaluateHeartbeat()
     }
-    stopConversation = binding.session.subscribe(handleConversation)
+    stopConversation = conversation.snapshot.subscribe(handleConversation)
     handleConversation() // establish the baseline immediately
   }
 
-  // ── list watcher: busy/pending facts + pending-interaction chime ─────────
+  // ── list watcher: busy facts + pending-interaction chime ─────────────────
   const handleList = (): void => {
     const state = ctx.sessions.list.getSnapshot()
+    const pending = ctx.uiSession.pendingInteractions.getSnapshot()
     const seen = new Set<string>()
     anyRunning = false
-    anyPending = false
+    anyPending = pending.size > 0
     for (const id of state.ids) {
       const summary = state.byId[id]
       if (summary === undefined) continue
       seen.add(id)
       if (summary.running) anyRunning = true
-      if (summary.pendingInteraction !== undefined) anyPending = true
+      const isPending = pending.has(id)
       const prev = tracked.get(id)
-      const isPending = summary.pendingInteraction !== undefined
       const next: TrackedSession = { pending: isPending, baselined: prev?.baselined ?? false }
       if (!next.baselined) {
         // First-ever observation: baseline edges, remember without beeping. A
@@ -276,10 +285,12 @@ export function watchBeepState(
     evaluateHeartbeat()
   }
   const stopList = ctx.sessions.list.subscribe(handleList)
+  const stopPending = ctx.uiSession.pendingInteractions.subscribe(handleList)
   handleList() // initial pass: heartbeat if a session is already busy
 
   return () => {
     stopList()
+    stopPending()
     stopConversation?.()
     stopHeartbeat()
     for (const id of [...escalationHandles.keys()]) clearEscalation(id)

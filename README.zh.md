@@ -19,12 +19,12 @@
 
 ## 工作原理
 
-浏览器端观察两个与 React 无关的运行时数据面：
+浏览器端观察三个与 React 无关的可观察数据面：
 
-- **`ctx.sessions.list`**（`ObservableSnapshot<SessionListState>`）：每个会话行的 `running` 与 `pendingInteraction` 标志。
+- **`ctx.sessions.list`**（`ObservableSnapshot<SessionListState>`）：每个会话行的 `running` 标志。
   - `running` 即**忙碌**信号：从提示词受理到工具执行、推理思考，整个回合都为 true。只要有**任意**会话在运行，低频**低鸣**就按固定间隔重复（默认 4 秒，可配置）——工作开始的第一拍立即响起（若页面加载时已有会话正在工作，也会立即响起）。仅当当前会话**正在活跃地**流式输出可见内容时低鸣暂停（由滴答声接管——「正在流式输出」指最近 1.5 秒内有文本增长，可配置）；当**任意**会话有待处理交互时也**暂停**（提示音已提醒过你）。输出停止约 1.5 秒后低鸣即恢复——即使智能体仍在继续工作（如消息之后的工具调用）——交互清除后也会恢复。最后一个运行中的会话转为空闲后完全停止。这是**电平**判定：它表示「有东西正在工作」。音色本身是柔和的低频 lub-dub 心跳（两段 90–120 Hz 的缓起正弦起伏）——令人安心，而非催促。
-  - `pendingInteraction`（approval / plan-review / question）出现时播放**提示音**。判定只看**边沿**而非电平——持续等待的会话不会在每次刷新时重复提示。**未应答**的交互会在 10 秒后再次提示，之后每 30 秒重复一次（均可配置），直到被应答或会话消失；页面加载时已处于等待的交互同样启动提醒阶梯（但不会立即提示）。
-- **当前会话的对话可观察对象**（`binding.session`，`ObservableSnapshot<ConversationSnapshot>`）：其通知器在每一帧流式输出时触发；可见输出文本增长时触发**滴答声**（频率受渲染节奏约束，音频引擎自身的防抖再叠加硬性下限）。
+- **`ctx.uiSession.pendingInteractions`**（`ObservableSnapshot<SessionPendingInteractionSnapshot>`）：每个会话的有效待处理交互（approval / plan-review / question）。某会话出现 0→1 边沿时播放**提示音**。判定只看**边沿**而非电平——持续等待的会话不会在每次刷新时重复提示。**未应答**的交互会在 10 秒后再次提示，之后每 30 秒重复一次（均可配置），直到被应答或会话消失；页面加载时已处于等待的交互同样启动提醒阶梯（但不会立即提示）。
+- **当前会话的对话快照**（`uiConversation.binding(id).snapshot`，`ObservableSnapshot<ConversationSnapshot>`）：其通知器在每一帧组装完成时触发；chat 目标实时 `partial` 中的可见输出文本增长时触发**滴答声**（频率受渲染节奏约束，音频引擎自身的防抖再叠加硬性下限）。
 
 所有音色均在代码内合成，带线性渐入渐出包络——无需素材文件，状态快速切换也不会产生爆音。每种音色有 50 ms 的最小防抖间隔。
 

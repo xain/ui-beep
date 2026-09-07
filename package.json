@@ -1,7 +1,7 @@
 {
   "name": "@xain_npm/dsh-client-ui-beep",
   "description": "Web agent-heartbeat sonification for DeepSeek Harness: a calm lub-dub hum while agents work, ticks on streaming output, chime when a session awaits your input",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publishConfig": {
     "access": "public"
   },
@@ -41,22 +41,26 @@
   "dsh": {
     "client": {
       "inject": [
-        "@deepseek-ai/dsh-client-runtime"
+        "@deepseek-ai/dsh-api-session-controller",
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-session"
       ],
-      "platform": "web",
-      "immediately": true
+      "platform": "web"
     }
   },
   "license": "MIT",
   "peerDependencies": {
-    "@deepseek-ai/cordis": ">=4.0.1",
-    "@deepseek-ai/dsh-client-runtime": ">=0.1.1-rc.2"
+    "@deepseek-ai/cordis": "^4.0.2"
   },
   "devDependencies": {
-    "@deepseek-ai/cordis": "^4.0.1",
-    "@deepseek-ai/dsh-api-remotes": "^0.1.1-rc.2",
-    "@deepseek-ai/dsh-client-runtime": "^0.1.1-rc.2",
-    "@deepseek-ai/dsh-invariants": "^0.1.1-rc.2",
+    "@deepseek-ai/cordis": "^4.0.2",
+    "@deepseek-ai/dsh-api-remotes": "^0.1.2-rc.1",
+    "@deepseek-ai/dsh-api-session-controller": "^0.1.2-rc.1",
+    "@deepseek-ai/dsh-client-ui-chat": "^0.1.2-rc.1",
+    "@deepseek-ai/dsh-client-ui-conversation": "^0.1.2-rc.1",
+    "@deepseek-ai/dsh-client-ui-session": "^0.1.2-rc.1",
+    "@deepseek-ai/dsh-invariants": "^0.1.2-rc.1",
+    "@deepseek-ai/dsh-session": "^0.1.2-rc.1",
     "tsdown": "^0.22.2",
     "typescript": "^5.5.0",
     "vitest": "^2.0.0"

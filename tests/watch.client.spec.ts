@@ -1,9 +1,14 @@
 /**
  * Beep state-watcher tests: busy heartbeat, output tick, and chime edges.
  *
- * The watcher consumes `ctx.sessions.list` (an ObservableSnapshot) and the
- * `ctx.sessions.binding(id)` face (for the current session's conversation
- * observable):
+ * The watcher consumes three observable faces:
+ * - `ctx.sessions.list` (an ObservableSnapshot) for the running/busy rows;
+ * - `ctx.uiSession.pendingInteractions` (an ObservableSnapshot map) for the
+ *   pending-interaction edges;
+ * - `ctx.uiConversation.binding(id).snapshot` for the current session's
+ *   assembled Conversation, whose chat-target `partial` text growth drives
+ *   the tick.
+ *
  * - hum: level-based — a heartbeat runs while ANY session is `running` (busy),
  *   first beat immediate, stops when the last running session goes idle;
  * - tick: edge-based on the current session's visible text growth;
@@ -14,54 +19,91 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { watchBeepState } from '../src/client/watch.ts'
-import type { SessionId } from '@deepseek-ai/dsh-api-remotes/client'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
 
 afterEach(() => { vi.useRealTimers() })
 
 /** One streaming frame's content: visible text (reasoning is not ticked). */
 type StreamFrame = { text?: string } | null
 
-/** Minimal snapshot-shaped sessions double with a mutable conversation face. */
-function makeSessions() {
+/** Minimal snapshot-shaped client double with mutable list/pending/conversation faces. */
+function makeCtx() {
   let snapshot: {
     ids: string[]
-    byId: Record<string, { running: boolean; pendingInteraction?: string }>
+    byId: Record<string, { running: boolean }>
     current?: string
   } = { ids: [], byId: {} }
   const listListeners = new Set<() => void>()
+  /** Per-session pending interactions (uiSession.pendingInteractions). */
+  let pending = new Map<string, { key: string; kind: string; sessionId: string }>()
+  const pendingListeners = new Set<() => void>()
   /** Per-session conversation observers; the spec drives them via `stream()`. */
   const conversations = new Map<string, { partial: StreamFrame }>()
   const conversationListeners = new Map<string, Set<() => void>>()
 
   return {
-    list: {
-      getSnapshot: () => snapshot,
-      subscribe: (fn: () => void) => {
-        listListeners.add(fn)
-        return () => { listListeners.delete(fn) }
+    sessions: {
+      list: {
+        getSnapshot: () => snapshot,
+        subscribe: (fn: () => void) => {
+          listListeners.add(fn)
+          return () => { listListeners.delete(fn) }
+        },
+      },
+      // The watcher only gates on binding presence before opening the
+      // conversation; a listed session is always bound in the double.
+      binding: (_id: string) => ({ session: { getSnapshot: () => ({ sessionId: _id }), subscribe: () => () => {} } }),
+    },
+    uiSession: {
+      pendingInteractions: {
+        getSnapshot: () => pending,
+        subscribe: (fn: () => void) => {
+          pendingListeners.add(fn)
+          return () => { pendingListeners.delete(fn) }
+        },
       },
     },
-    binding: (id: string) => {
-      const session = {
-        subscribe: (fn: () => void) => {
-          let set = conversationListeners.get(id)
-          if (set === undefined) { set = new Set(); conversationListeners.set(id, set) }
-          set.add(fn)
-          return () => { set?.delete(fn) }
-        },
-        getSnapshot: () => {
-          const frame = conversations.get(id)?.partial ?? null
-          const blocks = frame === null
-            ? []
-            : [...(frame.text === undefined ? [] : [{ kind: 'text' as const, text: frame.text }])]
-          return { sessionId: id, partial: frame === null ? null : { blocks } }
-        },
-      }
-      return { session }
+    uiConversation: {
+      binding: (id: string) => {
+        const snapshot = {
+          getSnapshot: () => {
+            const frame = conversations.get(id)?.partial ?? null
+            const blocks = frame === null
+              ? []
+              : [...(frame.text === undefined ? [] : [{ kind: 'text' as const, text: frame.text }])]
+            return {
+              views: {
+                get: (target: string) => target === 'chat'
+                  ? { legacy: { partial: frame === null ? null : { blocks } } }
+                  : undefined,
+              },
+            }
+          },
+          subscribe: (fn: () => void) => {
+            let set = conversationListeners.get(id)
+            if (set === undefined) { set = new Set(); conversationListeners.set(id, set) }
+            set.add(fn)
+            return () => { set?.delete(fn) }
+          },
+        }
+        return { snapshot }
+      },
     },
     set(next: typeof snapshot) {
       snapshot = next
       for (const fn of [...listListeners]) fn()
+    },
+    /** Drive the uiSession pending-interaction map (chime edges). */
+    setPending(ids: readonly string[]) {
+      pending = new Map(ids.map(id => [id, { key: `p-${id}`, kind: 'approval', sessionId: id }]))
+      for (const fn of [...pendingListeners]) fn()
+    },
+    /** Update list and pending in one observation (page-load baseline cases). */
+    setWithPending(nextList: typeof snapshot, ids: readonly string[]) {
+      snapshot = nextList
+      pending = new Map(ids.map(id => [id, { key: `p-${id}`, kind: 'approval', sessionId: id }]))
+      for (const fn of [...listListeners]) fn()
+      for (const fn of [...pendingListeners]) fn()
     },
     /** Drive the conversation observable for one session (streaming frames). */
     stream(id: string, frame: StreamFrame) {
@@ -73,18 +115,13 @@ function makeSessions() {
 
 const ID = 's1' as SessionId
 
-/** Cast a sessions double into the ClientContext slice the watcher reads. */
-function asCtx(sessions: ReturnType<typeof makeSessions>): { sessions: typeof sessions } {
-  return { sessions }
-}
-
-function watch(beeps: string[], heartbeatMs = 1000, extra: { pendingFirstRechimeMs?: number; pendingRechimeMs?: number } = {}) {
-  const sessions = makeSessions()
-  const stop = watchBeepState(asCtx(sessions) as never, { onBeep: v => { beeps.push(v) } }, {
+function watch(beeps: string[], heartbeatMs = 1000, extra: { pendingFirstRechimeMs?: number; pendingRechimeMs?: number; streamingPauseMs?: number } = {}) {
+  const ctx = makeCtx()
+  const stop = watchBeepState(ctx as never, { onBeep: (v) => { beeps.push(v) } }, {
     heartbeatMs,
     ...extra,
   })
-  return { sessions, stop }
+  return { ctx, stop }
 }
 
 describe('watchBeepState', () => {
@@ -93,11 +130,11 @@ describe('watchBeepState', () => {
   it('hums immediately and on the heartbeat interval while any session runs', () => {
     vi.useFakeTimers()
     const beeps: string[] = []
-    const { sessions, stop } = watch(beeps, 1000)
-    sessions.set({ ids: [ID], byId: { [ID]: { running: false } } })
+    const { ctx, stop } = watch(beeps, 1000)
+    ctx.set({ ids: [ID], byId: { [ID]: { running: false } } })
     expect(beeps).toEqual([])
     // A turn starts — busy: first beat immediate.
-    sessions.set({ ids: [ID], byId: { [ID]: { running: true } } })
+    ctx.set({ ids: [ID], byId: { [ID]: { running: true } } })
     expect(beeps).toEqual(['hum'])
     vi.advanceTimersByTime(1000)
     expect(beeps).toEqual(['hum', 'hum'])
@@ -109,12 +146,12 @@ describe('watchBeepState', () => {
   it('stops humming when the last running session goes idle', () => {
     vi.useFakeTimers()
     const beeps: string[] = []
-    const { sessions, stop } = watch(beeps, 1000)
-    sessions.set({ ids: [ID], byId: { [ID]: { running: true } } })
+    const { ctx, stop } = watch(beeps, 1000)
+    ctx.set({ ids: [ID], byId: { [ID]: { running: true } } })
     expect(beeps).toEqual(['hum'])
     vi.advanceTimersByTime(1000)
     expect(beeps).toEqual(['hum', 'hum'])
-    sessions.set({ ids: [ID], byId: { [ID]: { running: false } } })
+    ctx.set({ ids: [ID], byId: { [ID]: { running: false } } })
     vi.advanceTimersByTime(5000)
     expect(beeps).toEqual(['hum', 'hum'])
     stop()
@@ -123,9 +160,9 @@ describe('watchBeepState', () => {
   it('hums from page load when a session is already busy', () => {
     vi.useFakeTimers()
     const beeps: string[] = []
-    const { sessions, stop } = watch(beeps, 1000)
+    const { ctx, stop } = watch(beeps, 1000)
     // The first snapshot already shows a running session ("Deep diving…").
-    sessions.set({ ids: [ID], byId: { [ID]: { running: true } } })
+    ctx.set({ ids: [ID], byId: { [ID]: { running: true } } })
     expect(beeps).toEqual(['hum'])
     stop()
   })
@@ -133,12 +170,12 @@ describe('watchBeepState', () => {
   it('keeps humming while ANY session is busy, not just the current one', () => {
     vi.useFakeTimers()
     const beeps: string[] = []
-    const { sessions, stop } = watch(beeps, 1000)
+    const { ctx, stop } = watch(beeps, 1000)
     const other = 's2' as SessionId
-    sessions.set({ ids: [ID], byId: { [ID]: { running: false } } })
+    ctx.set({ ids: [ID], byId: { [ID]: { running: false } } })
     expect(beeps).toEqual([])
     // A background subagent turns busy while the current session is idle.
-    sessions.set({ ids: [ID, other], byId: { [ID]: { running: false }, [other]: { running: true } } })
+    ctx.set({ ids: [ID, other], byId: { [ID]: { running: false }, [other]: { running: true } } })
     expect(beeps).toEqual(['hum'])
     stop()
   })
@@ -146,16 +183,16 @@ describe('watchBeepState', () => {
   it('stops humming while a pending interaction is present, resumes after it clears', () => {
     vi.useFakeTimers()
     const beeps: string[] = []
-    const { sessions, stop } = watch(beeps, 1000)
-    sessions.set({ ids: [ID], byId: { [ID]: { running: true } } })
+    const { ctx, stop } = watch(beeps, 1000)
+    ctx.set({ ids: [ID], byId: { [ID]: { running: true } } })
     expect(beeps).toEqual(['hum'])
     // A pending interaction arrives: chime fires, hum stops.
-    sessions.set({ ids: [ID], byId: { [ID]: { running: true, pendingInteraction: 'approval' } } })
+    ctx.setPending([ID])
     expect(beeps).toEqual(['hum', 'chime'])
     vi.advanceTimersByTime(5000)
     expect(beeps).toEqual(['hum', 'chime'])
     // Interaction cleared: work continues, hum resumes.
-    sessions.set({ ids: [ID], byId: { [ID]: { running: true } } })
+    ctx.setPending([])
     expect(beeps).toEqual(['hum', 'chime', 'hum'])
     stop()
   })
@@ -163,11 +200,11 @@ describe('watchBeepState', () => {
   it('stops humming while the current session streams output, resumes when output pauses', () => {
     vi.useFakeTimers()
     const beeps: string[] = []
-    const { sessions, stop } = watch(beeps, 1000)
-    sessions.set({ ids: [ID], byId: { [ID]: { running: true } }, current: ID })
+    const { ctx, stop } = watch(beeps, 1000)
+    ctx.set({ ids: [ID], byId: { [ID]: { running: true } }, current: ID })
     expect(beeps).toEqual(['hum'])
     // Output streams: tick fires, hum stops.
-    sessions.stream(ID, { text: 'hello' })
+    ctx.stream(ID, { text: 'hello' })
     expect(beeps).toEqual(['hum', 'tick'])
     // The streaming window (1.5s) lapses while still running: hum resumes.
     vi.advanceTimersByTime(1500)
@@ -182,12 +219,12 @@ describe('watchBeepState', () => {
 
   it('chimes when a session gains a pending interaction (no immediate repeat)', () => {
     const beeps: string[] = []
-    const { sessions, stop } = watch(beeps)
-    sessions.set({ ids: [ID], byId: { [ID]: { running: false } } })
+    const { ctx, stop } = watch(beeps)
+    ctx.set({ ids: [ID], byId: { [ID]: { running: false } } })
     expect(beeps).toEqual([])
-    sessions.set({ ids: [ID], byId: { [ID]: { running: false, pendingInteraction: 'approval' } } })
+    ctx.setPending([ID])
     expect(beeps).toEqual(['chime'])
-    sessions.set({ ids: [ID], byId: { [ID]: { running: false, pendingInteraction: 'approval' } } })
+    ctx.setPending([ID])
     expect(beeps).toEqual(['chime'])
     stop()
   })
@@ -197,9 +234,9 @@ describe('watchBeepState', () => {
   it('re-chimes 10s after an unanswered interaction, then every 30s', () => {
     vi.useFakeTimers()
     const beeps: string[] = []
-    const { sessions, stop } = watch(beeps, 1000, { pendingFirstRechimeMs: 10_000, pendingRechimeMs: 30_000 })
-    sessions.set({ ids: [ID], byId: { [ID]: { running: false } } })
-    sessions.set({ ids: [ID], byId: { [ID]: { running: false, pendingInteraction: 'approval' } } })
+    const { ctx, stop } = watch(beeps, 1000, { pendingFirstRechimeMs: 10_000, pendingRechimeMs: 30_000 })
+    ctx.set({ ids: [ID], byId: { [ID]: { running: false } } })
+    ctx.setPending([ID])
     expect(beeps).toEqual(['chime'])
     // Not yet 10s: no repeat.
     vi.advanceTimersByTime(9000)
@@ -219,12 +256,12 @@ describe('watchBeepState', () => {
   it('stops re-chiming once the interaction is answered', () => {
     vi.useFakeTimers()
     const beeps: string[] = []
-    const { sessions, stop } = watch(beeps, 1000, { pendingFirstRechimeMs: 10_000, pendingRechimeMs: 30_000 })
-    sessions.set({ ids: [ID], byId: { [ID]: { running: false } } })
-    sessions.set({ ids: [ID], byId: { [ID]: { running: false, pendingInteraction: 'approval' } } })
+    const { ctx, stop } = watch(beeps, 1000, { pendingFirstRechimeMs: 10_000, pendingRechimeMs: 30_000 })
+    ctx.set({ ids: [ID], byId: { [ID]: { running: false } } })
+    ctx.setPending([ID])
     expect(beeps).toEqual(['chime'])
     // Answered before the first re-chime.
-    sessions.set({ ids: [ID], byId: { [ID]: { running: false } } })
+    ctx.setPending([])
     vi.advanceTimersByTime(120_000)
     expect(beeps).toEqual(['chime'])
     stop()
@@ -233,9 +270,9 @@ describe('watchBeepState', () => {
   it('starts the reminder ladder for an interaction already pending at baseline', () => {
     vi.useFakeTimers()
     const beeps: string[] = []
-    const { sessions, stop } = watch(beeps, 1000, { pendingFirstRechimeMs: 10_000, pendingRechimeMs: 30_000 })
+    const { ctx, stop } = watch(beeps, 1000, { pendingFirstRechimeMs: 10_000, pendingRechimeMs: 30_000 })
     // Page loads with the interaction already pending: no immediate chime.
-    sessions.set({ ids: [ID], byId: { [ID]: { running: false, pendingInteraction: 'approval' } } })
+    ctx.setWithPending({ ids: [ID], byId: { [ID]: { running: false } } }, [ID])
     expect(beeps).toEqual([])
     vi.advanceTimersByTime(10_000)
     expect(beeps).toEqual(['chime'])
@@ -244,11 +281,11 @@ describe('watchBeepState', () => {
 
   it('forgets removed sessions so a later re-add beeps again', () => {
     const beeps: string[] = []
-    const { sessions, stop } = watch(beeps)
-    sessions.set({ ids: [ID], byId: { [ID]: { pendingInteraction: 'approval' } } })
+    const { ctx, stop } = watch(beeps)
+    ctx.setWithPending({ ids: [ID], byId: { [ID]: { running: false } } }, [ID])
     expect(beeps).toEqual([])
-    sessions.set({ ids: [], byId: {} })
-    sessions.set({ ids: [ID], byId: { [ID]: { pendingInteraction: 'approval' } } })
+    ctx.setWithPending({ ids: [], byId: {} }, [])
+    ctx.setWithPending({ ids: [ID], byId: { [ID]: { running: false } } }, [ID])
     expect(beeps).toEqual(['chime'])
     stop()
   })
@@ -258,19 +295,19 @@ describe('watchBeepState', () => {
   it('ticks as the current session streams visible text, and only on growth', () => {
     vi.useFakeTimers()
     const beeps: string[] = []
-    const { sessions, stop } = watch(beeps, 1000, { streamingPauseMs: 1500 })
-    sessions.set({ ids: [ID], byId: { [ID]: { running: true } }, current: ID })
+    const { ctx, stop } = watch(beeps, 1000, { streamingPauseMs: 1500 })
+    ctx.set({ ids: [ID], byId: { [ID]: { running: true } }, current: ID })
     // Baseline conversation snapshot; the running flip already hummed.
-    sessions.stream(ID, { text: 'hello' })
+    ctx.stream(ID, { text: 'hello' })
     expect(beeps).toEqual(['hum', 'tick'])
-    sessions.stream(ID, { text: 'hello world' })
+    ctx.stream(ID, { text: 'hello world' })
     expect(beeps).toEqual(['hum', 'tick', 'tick'])
     // Output stops (no more growth) while still running: the hum stays paused
     // during the streaming window, then resumes once it lapses.
     vi.advanceTimersByTime(1500)
     expect(beeps).toEqual(['hum', 'tick', 'tick', 'hum'])
     // Output resumes (grows past the previous length): tick again, hum pauses again.
-    sessions.stream(ID, { text: 'hello world, again' })
+    ctx.stream(ID, { text: 'hello world, again' })
     expect(beeps).toEqual(['hum', 'tick', 'tick', 'hum', 'tick'])
     stop()
   })
@@ -281,9 +318,9 @@ describe('watchBeepState', () => {
     // keep the hum paused — only recent text GROWTH should.
     vi.useFakeTimers()
     const beeps: string[] = []
-    const { sessions, stop } = watch(beeps, 1000, { streamingPauseMs: 1500 })
-    sessions.set({ ids: [ID], byId: { [ID]: { running: true } }, current: ID })
-    sessions.stream(ID, { text: 'I will edit the file' })
+    const { ctx, stop } = watch(beeps, 1000, { streamingPauseMs: 1500 })
+    ctx.set({ ids: [ID], byId: { [ID]: { running: true } }, current: ID })
+    ctx.stream(ID, { text: 'I will edit the file' })
     expect(beeps).toEqual(['hum', 'tick'])
     // The partial keeps the same text (tool call executing, no new tokens):
     // hum resumes after the streaming window even though partial is non-null.
@@ -296,25 +333,25 @@ describe('watchBeepState', () => {
 
   it('does not tick when a non-current session streams', () => {
     const beeps: string[] = []
-    const { sessions, stop } = watch(beeps)
-    sessions.set({ ids: [ID], byId: { [ID]: { running: false } }, current: undefined })
-    sessions.stream(ID, { text: 'hello' })
+    const { ctx, stop } = watch(beeps)
+    ctx.set({ ids: [ID], byId: { [ID]: { running: false } } })
+    ctx.stream(ID, { text: 'hello' })
     expect(beeps).toEqual([])
     stop()
   })
 
   it('re-wires the conversation watcher when the current session changes', () => {
     const beeps: string[] = []
-    const { sessions, stop } = watch(beeps)
+    const { ctx, stop } = watch(beeps)
     const other = 's2' as SessionId
-    sessions.set({ ids: [ID, other], byId: { [ID]: { running: false }, [other]: { running: false } }, current: ID })
-    sessions.stream(ID, { text: 'hi' })
+    ctx.set({ ids: [ID, other], byId: { [ID]: { running: false }, [other]: { running: false } }, current: ID })
+    ctx.stream(ID, { text: 'hi' })
     expect(beeps).toEqual(['tick'])
     // Switch current to the other session; its stream ticks, the old one does not.
-    sessions.set({ ids: [ID, other], byId: { [ID]: { running: false }, [other]: { running: false } }, current: other })
-    sessions.stream(other, { text: 'hey' })
+    ctx.set({ ids: [ID, other], byId: { [ID]: { running: false }, [other]: { running: false } }, current: other })
+    ctx.stream(other, { text: 'hey' })
     expect(beeps).toEqual(['tick', 'tick'])
-    sessions.stream(ID, { text: 'hi there' })
+    ctx.stream(ID, { text: 'hi there' })
     expect(beeps).toEqual(['tick', 'tick'])
     stop()
   })
@@ -322,9 +359,9 @@ describe('watchBeepState', () => {
   it('disposes every subscription, the heartbeat, and the reminder ladders', () => {
     vi.useFakeTimers()
     const beeps: string[] = []
-    const { sessions, stop } = watch(beeps, 1000, { pendingFirstRechimeMs: 10_000, pendingRechimeMs: 30_000 })
-    sessions.set({ ids: [ID], byId: { [ID]: { running: true } }, current: ID })
-    sessions.set({ ids: [ID], byId: { [ID]: { running: true, pendingInteraction: 'approval' } }, current: ID })
+    const { ctx, stop } = watch(beeps, 1000, { pendingFirstRechimeMs: 10_000, pendingRechimeMs: 30_000 })
+    ctx.set({ ids: [ID], byId: { [ID]: { running: true } }, current: ID })
+    ctx.setPending([ID])
     expect(beeps).toEqual(['hum', 'chime'])
     stop()
     vi.advanceTimersByTime(120_000)
