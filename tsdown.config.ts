@@ -33,6 +33,10 @@ export default defineConfig([
     outExtensions: jsExtensions,
   },
   // Browser half: the closure-factory artifact served as /plugins/<id>/client.js.
+  // The banner defines the CJS `module`/`exports` globals the factory body and
+  // footer reference; tsdown's cjs format emits `exports.<x> = ...` statements
+  // without a `var exports` in scope otherwise, so the browser throws
+  // `exports is not defined`. Matches the shared clientBundle preset's intro.
   {
     name: `${ID}/client`,
     entry: { client: 'src/client/index.ts' },
@@ -43,7 +47,7 @@ export default defineConfig([
     dts: false,
     sourcemap: true,
     outExtensions: jsExtensions,
-    banner: `window.__ModuleLoader__.load({ id: ${JSON.stringify(ID)}, factory: (require) => {`,
+    banner: `window.__ModuleLoader__.load({ id: ${JSON.stringify(ID)}, factory: (require) => {\nvar module = { exports: {} }; var exports = module.exports;`,
     footer: 'return module.exports; } });',
   },
 ])
