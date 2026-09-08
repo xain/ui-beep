@@ -1,7 +1,7 @@
 {
   "name": "@xain_npm/dsh-client-ui-beep",
   "description": "Web agent-heartbeat sonification for DeepSeek Harness: a calm lub-dub hum while agents work, ticks on streaming output, chime when a session awaits your input",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "publishConfig": {
     "access": "public"
   },
@@ -39,6 +39,9 @@
     "./package.json": "./package.json"
   },
   "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
     "client": {
       "inject": [
         "@deepseek-ai/dsh-api-session-controller",
@@ -70,6 +73,7 @@
     "lib/invariant.js",
     "lib/client.js",
     "lib/types/**/*.d.ts",
+    "cordis.patch.yml",
     "README.md",
     "LICENSE"
   ],

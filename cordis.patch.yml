@@ -1,0 +1,8 @@
+# ui-beep profile bundle: mounts the client plugin as a web row. Applied after
+# dsh-base and dsh-web-app; the browser half is served by dsh-client-modules.
+- insert:
+    - id: ui-beep
+      name: '@xain_npm/dsh-client-ui-beep'
+      config:
+        volume: 0.5
+        enabled: true
