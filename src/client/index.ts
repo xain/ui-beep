@@ -31,6 +31,9 @@ import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 // Type-only: pulls the SlotRegistry service merge (ctx.slots).
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
+// Type-only: pulls the composer `conversation.input.right` slot declaration.
+import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
+import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { BoundActions } from '@deepseek-ai/dsh-client-ui-slots'
 import type { TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 import {
@@ -41,6 +44,8 @@ import { BeepAudio, type BeepVoice } from './audio.ts'
 import { watchBeepState } from './watch.ts'
 import { BeepSettingsSection } from './BeepSettingsSection.tsx'
 import type { BeepSettingsSectionInjected } from './BeepSettingsSection.tsx'
+import { MuteToggle } from './MuteToggle.tsx'
+import type { MuteToggleInjected } from './MuteToggle.tsx'
 import { createBeepSettingsRowStore } from './settings-store.ts'
 import { en, zh, type BeepKey } from './locales.ts'
 
@@ -110,9 +115,12 @@ export function apply(ctx: Context, config?: BeepConfig): void {
       audio.setCustomAudio('tick', section.tickPath)
       audio.setCustomAudio('hum', section.humPath)
       audio.setCustomAudio('chime', section.chimePath)
+      muteStore.update(draft => { draft.value = !section.enabled })
     }
     bound?.sync(section, snapshot.writable)
   }
+  // The composer mute toggle's reactive source: true = beeps muted.
+  const muteStore = createSnapshotStore<{ value: boolean }>({ value: !(config?.enabled ?? DEFAULT_ENABLED) })
   ctx.effect(() => host.subscribe(sync), 'ui-beep: settings scope adoption')
   // Adopt the initial resolved value (already folded by the Host) — the
   // scope's first snapshot arrives before the mirror's first describe, so
@@ -172,4 +180,24 @@ export function apply(ctx: Context, config?: BeepConfig): void {
     store,
     inject: injected,
   }, BeepSettingsSection))
+
+  // ── composer mute toggle ────────────────────────────────────────────────
+  // A speaker button beside the model selector mutes/unmutes every beep. The
+  // muted state mirrors the durable `enabled` field (muted = !enabled), so it
+  // stays in sync with the Settings page switch and the row config.
+  ctx.slots.inject('conversation.input.right', () => ctx.slots.register({
+    name: 'conversation.input.right',
+    id: 'ui-beep-mute',
+    order: 0,
+    locale: SETTINGS_NS,
+    inject: (): MuteToggleInjected => ({
+      hooks: {
+        muted: {
+          getSnapshot: () => muteStore.getSnapshot().value,
+          subscribe: (listener) => muteStore.subscribe(listener),
+        },
+      },
+      setMuted: (muted) => { void host.set('enabled', !muted) },
+    }),
+  }, MuteToggle))
 }

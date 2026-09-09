@@ -39,6 +39,10 @@ export const zh = {
   'browser.loadFailed': '无法读取该文件夹',
   'browser.open': '打开',
   'browser.cancel': '取消',
+  'mute.on': '静音',
+  'mute.off': '取消静音',
+  'mute.enabledLabel': '提示音已开启',
+  'mute.disabledLabel': '提示音已静音',
 } satisfies Record<string, string>
 
 /** The settings.beep namespace key union. */
@@ -83,4 +87,8 @@ export const en = {
   'browser.loadFailed': 'Cannot read that folder',
   'browser.open': 'Open',
   'browser.cancel': 'Cancel',
+  'mute.on': 'Mute',
+  'mute.off': 'Unmute',
+  'mute.enabledLabel': 'Beeps are on',
+  'mute.disabledLabel': 'Beeps are muted',
 } satisfies Record<BeepKey, string>

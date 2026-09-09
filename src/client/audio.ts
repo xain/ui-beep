@@ -98,6 +98,11 @@ export class BeepAudio {
   /** Set whether any play is audible (a global mute). */
   setEnabled(value: boolean): void {
     this.enabled = value
+    // Muting stops any running custom loop immediately; unmuting lets the
+    // next heartbeat start it again.
+    if (!value) {
+      for (const voice of [...this.loops.keys()]) this.stopLoop(voice)
+    }
   }
 
   /** Current per-voice gain table (0…2). */

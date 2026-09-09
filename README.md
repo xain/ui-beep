@@ -96,6 +96,11 @@ may clip). The defaults stay conservative so a first-time user is not
 startled. Changes apply immediately and persist in the user-settings
 document; a user override always wins over the row config.
 
+A **mute toggle** also sits in the composer's right tool row, beside the model
+selector: a speaker button that mutes/unmutes every beep (speaker with an X
+when muted). It mirrors the same durable `enabled` field as the Settings
+switch, so the two stay in sync; muting also stops a looping hum immediately.
+
 ### Custom audio per voice
 
 Each voice can play a **user-supplied audio file** instead of the built-in

@@ -1,0 +1,35 @@
+/* Composer mute toggle: a compact icon button matching the composer tool-row
+ * chrome (transparent, hover wash, currentColor glyph). The muted state adds
+ * a red tint so the off state reads at a glance. */
+
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+}
+
+.toggle:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+
+.toggle:focus-visible {
+  outline: 2px solid var(--dsw-alias-brand-primary);
+  outline-offset: 1px;
+}
+
+.toggle[data-muted='true'] {
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.toggle[data-muted='true']:hover {
+  color: var(--dsw-alias-state-error-primary);
+}
