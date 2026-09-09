@@ -1,0 +1,99 @@
+/* UI Beep settings section: heading + intro + enable row + volume rows,
+ * matching the Models/Plugins section rhythm (heading 20/28, intro 13/20). */
+
+.section {
+  display: flex;
+  flex-direction: column;
+  padding: 0 24px;
+}
+
+.heading {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 500;
+  line-height: 28px;
+  color: var(--dsw-alias-label-primary);
+}
+
+.intro {
+  margin: 4px 0 0;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 20px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* Enable row: switch + copy on one line, same cell rhythm as volume rows. */
+.enableRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 0;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l2);
+}
+
+.enableText {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-right: 48px;
+}
+
+.title {
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 22px;
+  color: var(--dsw-alias-label-primary);
+}
+
+.desc {
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* Toggle switch: track + sliding thumb, matching the platform switch
+ * geometry (36x20 track, 16 thumb, 2px pad). */
+.switch {
+  position: relative;
+  box-sizing: border-box;
+  flex: none;
+  width: 36px;
+  height: 20px;
+  padding: 2px;
+  border: none;
+  border-radius: 10px;
+  background: var(--dsw-alias-bg-module-platform);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.switch[data-on='true'] {
+  background: var(--dsw-alias-brand-primary);
+}
+
+.switch:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.switch:focus-visible {
+  outline: 2px solid var(--dsw-alias-brand-primary);
+  outline-offset: 2px;
+}
+
+.thumb {
+  display: block;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--dsw-alias-label-primary);
+  transition: transform 0.15s ease;
+}
+
+.switch[data-on='true'] .thumb {
+  transform: translateX(16px);
+}

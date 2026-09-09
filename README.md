@@ -85,6 +85,13 @@ The cordis row accepts a `config:` object (all optional):
     streamingPauseMs: 1500         # output counts as "streaming" this long after the last text growth
 ```
 
+The row `config:` seeds the durable `ui-beep` user-settings section as the
+composition base. The **Settings → 提示音 (Sound)** page then owns the live
+values: an enable switch, a master volume, and one volume per voice
+(streaming tick / working hum / awaiting-input chime), each 0–100 % with a
+preview button. Changes apply immediately and persist in the user-settings
+document; a user override always wins over the row config.
+
 ## Model Experience
 
 None. The package is a browser-side read-only sonification of already-logged session facts (running/busy, streaming output, pending interactions); it plays audio and registers nothing model-facing. The model's own view of its work stays with the tools and host services that produce those facts.
@@ -98,4 +105,3 @@ None; the package never assembles or sends provider requests.
 - **Sound is page-local.** Beeps only play in the tab where the web GUI is open and focused enough to receive the gesture arm; the plugin does not reach into other tabs or the host process.
 - **One voice per edge.** The chime fires once when a session enters a pending interaction; a *still*-pending session does not re-chime on timeout (the macOS AgentPulse escalation ladder — re-chime at 30 s, notify at 120 s — is future work).
 - **Tick is the current session only.** Output from a running *background* session (a subagent you are not watching) ticks nothing; only the focused session's stream drives the tick.
-- **No settings card yet.** Volume and mute are row-config only; a web settings card is a natural follow-up.

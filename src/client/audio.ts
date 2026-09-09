@@ -26,11 +26,16 @@ export interface BeepAudioOptions {
   minInterval?: number
 }
 
+/** Per-voice gain table (0…1), multiplied into the master bus on play. */
+export type BeepVoiceVolumes = Record<BeepVoice, number>
+
 /** The one audio engine instance per page. */
 export class BeepAudio {
   private ctx: AudioContext | undefined
   private master: GainNode | undefined
   private volume: number
+  private enabled = true
+  private voiceVolumes: BeepVoiceVolumes = { tick: 1, hum: 1, chime: 1 }
   private readonly minInterval: number
   private readonly lastPlayed = new Map<BeepVoice, number>()
   private gestureBound = false
@@ -54,6 +59,30 @@ export class BeepAudio {
     if (this.master !== undefined) {
       this.master.gain.setTargetAtTime(this.volume, this.ctx?.currentTime ?? 0, 0.01)
     }
+  }
+
+  /** Whether any play is audible. */
+  getEnabled(): boolean {
+    return this.enabled
+  }
+
+  /** Set whether any play is audible (a global mute). */
+  setEnabled(value: boolean): void {
+    this.enabled = value
+  }
+
+  /** Current per-voice gain table (0…1). */
+  getVoiceVolumes(): BeepVoiceVolumes {
+    return { ...this.voiceVolumes }
+  }
+
+  /**
+   * Set one voice's gain (0…1). Multiplied into the master bus on play.
+   * @param voice - which voice to tune.
+   * @param value - linear gain.
+   */
+  setVoiceVolume(voice: BeepVoice, value: number): void {
+    this.voiceVolumes[voice] = clamp01(value)
   }
 
   /**
@@ -97,21 +126,24 @@ export class BeepAudio {
   }
 
   /**
-   * Play one voice if the debounce window allows. Silent no-op until armed.
+   * Play one voice if the debounce window allows. Silent no-op until armed,
+   * and while globally muted (`setEnabled(false)`).
    * @param voice - which tone to play.
    */
   play(voice: BeepVoice): void {
     const ctx = this.ctx
     if (ctx === undefined || this.master === undefined) return
+    if (!this.enabled) return
     const now = performance.now()
     const last = this.lastPlayed.get(voice)
     if (last !== undefined && now - last < this.minInterval * 1000) return
     this.lastPlayed.set(voice, now)
 
+    const gain = this.voiceVolumes[voice]
     switch (voice) {
-      case 'tick': renderTick(ctx, this.master); break
-      case 'hum': renderHum(ctx, this.master); break
-      case 'chime': renderChime(ctx, this.master); break
+      case 'tick': renderTick(ctx, this.master, gain); break
+      case 'hum': renderHum(ctx, this.master, gain); break
+      case 'chime': renderChime(ctx, this.master, gain); break
     }
   }
 }
@@ -216,8 +248,8 @@ function scheduleSoftBeat(
 }
 
 /** Streaming-output tick: short 2 kHz pop, 60 ms. */
-function renderTick(ctx: AudioContext, destination: AudioNode): void {
-  scheduleTone(ctx, destination, 2000, 0, 0.06, 0.2)
+function renderTick(ctx: AudioContext, destination: AudioNode, gain: number): void {
+  scheduleTone(ctx, destination, 2000, 0, 0.06, 0.2 * gain)
 }
 
 /**
@@ -226,17 +258,17 @@ function renderTick(ctx: AudioContext, destination: AudioNode): void {
  * the falling second beat, and the quiet level are what make it reassuring
  * rather than urgent.
  */
-function renderHum(ctx: AudioContext, destination: AudioNode): void {
+function renderHum(ctx: AudioContext, destination: AudioNode, gain: number): void {
   // "lub": the main beat, with a quiet octave harmonic for small-speaker
   // audibility. "dub": the softer, lower follow-up, like a real heartbeat.
   // Peaks are deliberately above the tick/chime so the calm heartbeat stays
   // clearly audible through the master gain (default 0.5) without ever
   // becoming loud.
-  scheduleSoftBeat(ctx, destination, 0, 118, 0.55, 0.4, 236)
-  scheduleSoftBeat(ctx, destination, 0.32, 92, 0.4, 0.34)
+  scheduleSoftBeat(ctx, destination, 0, 118, 0.55 * gain, 0.4, 236)
+  scheduleSoftBeat(ctx, destination, 0.32, 92, 0.4 * gain, 0.34)
 }
 
 /** Awaiting-input chime: two-tone bell (880 Hz + 1320 Hz), 500 ms. */
-function renderChime(ctx: AudioContext, destination: AudioNode): void {
-  scheduleTone(ctx, destination, 880, 0, 0.5, 0.4, 1320)
+function renderChime(ctx: AudioContext, destination: AudioNode, gain: number): void {
+  scheduleTone(ctx, destination, 880, 0, 0.5, 0.4 * gain, 1320)
 }

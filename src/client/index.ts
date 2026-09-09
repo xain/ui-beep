@@ -13,14 +13,36 @@
  * - **chime** — any session begins awaiting your input (approval / plan
  *   review / question).
  *
+ * The plugin also owns its Settings surface: a `settings.section` page where
+ * the enable switch and one volume per voice (plus the master gain) are read
+ * from and written to the durable `ui-beep` settings section, and applied to
+ * the audio engine live. The cordis row `config:` seeds the section as the
+ * composition base; a user override wins from then on.
+ *
  * Audio is silent until the first user gesture (browser autoplay policy), and
  * every subscription rides the plugin fiber's effect lifecycle, so unload and
- * HMR dispose cleanly. No host half behavior; the node half exists only so the
- * plugin appears in the Loader.
+ * HMR dispose cleanly. No host half behavior beyond the settings registration;
+ * the node half exists so the plugin appears in the Loader.
  */
 import type { Context } from '@deepseek-ai/cordis'
+// Type-only: the settingsScope Context merge (the durable section's transport).
+import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
+// Type-only: pulls the locale plugin's Context merge (ctx.locale).
+import type {} from '@deepseek-ai/dsh-client-locale/client'
+// Type-only: pulls the SlotRegistry service merge (ctx.slots).
+import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
+import type { BoundActions } from '@deepseek-ai/dsh-client-ui-slots'
+import type { TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
+import {
+  BEEP_SETTINGS_NAMESPACE, DEFAULT_ENABLED,
+  type BeepSettings,
+} from '../beep-settings.ts'
 import { BeepAudio, type BeepVoice } from './audio.ts'
 import { watchBeepState } from './watch.ts'
+import { BeepSettingsSection } from './BeepSettingsSection.tsx'
+import type { BeepSettingsSectionInjected } from './BeepSettingsSection.tsx'
+import { createBeepSettingsRowStore } from './settings-store.ts'
+import { en, zh, type BeepKey } from './locales.ts'
 
 /** Plugin config (cordis row `config:`). Every field optional. */
 export interface BeepConfig {
@@ -38,23 +60,67 @@ export interface BeepConfig {
   streamingPauseMs?: number
 }
 
-/** Required services: the sessions list, the pending-interaction registry, and
- *  the Conversation assembly the beep watcher reads. */
-export const inject = ['sessions', 'uiSession', 'uiConversation']
+/** Required services: the sessions list, the pending-interaction registry, the
+ *  Conversation assembly the beep watcher reads, the settings scope, the slot
+ *  registry, and the locale service. */
+export const inject = [
+  'sessions', 'uiSession', 'uiConversation', 'slots', 'locale', 'settingsScope',
+]
+
+declare module '@deepseek-ai/dsh-client-ui-slots' {
+  interface LocaleNamespaceMap {
+    /** The UI Beep settings section copy. */
+    'settings.beep': BeepKey
+  }
+}
+
+/** Dictionary namespace owned by this plugin's settings section. */
+const SETTINGS_NS = 'settings.beep'
 
 /**
- * Client plugin body: build the audio engine, bind the first-gesture arm, and
- * watch session state for beep edges.
+ * Client plugin body: build the audio engine, bind the first-gesture arm,
+ * watch session state for beep edges, and own the UI Beep settings section —
+ * its values drive the engine live from the durable settings document.
  * @param ctx - client root context.
  * @param config - row config; falls back to defaults.
  */
 export function apply(ctx: Context, config?: BeepConfig): void {
   const audio = new BeepAudio(config?.volume === undefined ? {} : { volume: config.volume })
   audio.bindGesture()
-  const enabled = config?.enabled ?? true
+  audio.setEnabled(config?.enabled ?? DEFAULT_ENABLED)
 
+  // ── durable settings section ────────────────────────────────────────────
+  // The scope resolves schema defaults → row config (composition base) →
+  // user overrides. The engine follows the resolved value live.
+  const host = ctx.settingsScope.bind<BeepSettings>({ namespace: BEEP_SETTINGS_NAMESPACE })
+  const store = createBeepSettingsRowStore()
+  let bound: BoundActions<typeof store> | undefined
+
+  const sync = (): void => {
+    const snapshot = host.getSnapshot()
+    const section = snapshot.value
+    // Adopt the resolved value into the engine first so a settings change
+    // applies before the UI mirrors it.
+    if (section !== undefined) {
+      audio.setEnabled(section.enabled)
+      audio.setVolume(section.masterVolume)
+      audio.setVoiceVolume('tick', section.tickVolume)
+      audio.setVoiceVolume('hum', section.humVolume)
+      audio.setVoiceVolume('chime', section.chimeVolume)
+    }
+    bound?.sync(section, snapshot.writable)
+  }
+  ctx.effect(() => host.subscribe(sync), 'ui-beep: settings scope adoption')
+  // Adopt the initial resolved value (already folded by the Host) — the
+  // scope's first snapshot arrives before the mirror's first describe, so
+  // this also seeds the engine when a section exists.
+  sync()
+
+  // ── state watcher ───────────────────────────────────────────────────────
+  // The watcher always runs; the engine's enabled gate (driven by the
+  // settings section) decides audibility, so toggling the switch mid-session
+  // silences or restores beeps without re-wiring the subscriptions.
   ctx.effect(() => {
-    if (!enabled) return () => {}
     return watchBeepState(ctx, {
       onBeep: (voice: BeepVoice) => { audio.play(voice) },
     }, {
@@ -64,4 +130,34 @@ export function apply(ctx: Context, config?: BeepConfig): void {
       ...(config?.streamingPauseMs === undefined ? {} : { streamingPauseMs: config.streamingPauseMs }),
     })
   }, 'ui-beep: session state watcher')
+
+  // ── settings section ────────────────────────────────────────────────────
+  ctx.effect(() => ctx.locale.register(SETTINGS_NS, { zh, en }), 'ui-beep: settings dictionaries')
+  const t = ctx.locale.bind(SETTINGS_NS) as TranslateNS<'settings.beep'>
+
+  const injected = (actions: BoundActions<typeof store>): BeepSettingsSectionInjected => {
+    bound = actions
+    // Re-sync from the getter so no event is lost between registration and
+    // first render (the store's sync action is idempotent).
+    sync()
+    return {
+      setEnabled: (value) => { void host.set('enabled', value) },
+      setVolume: (voice, value) => {
+        const field = voice === 'master' ? 'masterVolume'
+          : voice === 'tick' ? 'tickVolume'
+            : voice === 'hum' ? 'humVolume' : 'chimeVolume'
+        void host.set(field, value)
+      },
+      preview: (voice) => { audio.play(voice) },
+    }
+  }
+  ctx.slots.inject('settings.section', () => ctx.slots.register({
+    name: 'settings.section',
+    id: 'ui-beep',
+    order: 20,
+    label: () => t('nav'),
+    locale: SETTINGS_NS,
+    store,
+    inject: injected,
+  }, BeepSettingsSection))
 }

@@ -16,6 +16,26 @@ describe('BeepAudio', () => {
     expect(audio.getVolume()).toBe(0)
   })
 
+  it('defaults every voice to full gain and clamps per-voice values', () => {
+    const audio = new BeepAudio()
+    expect(audio.getVoiceVolumes()).toEqual({ tick: 1, hum: 1, chime: 1 })
+    audio.setVoiceVolume('tick', 0.4)
+    audio.setVoiceVolume('hum', 2)
+    audio.setVoiceVolume('chime', -1)
+    expect(audio.getVoiceVolumes()).toEqual({ tick: 0.4, hum: 1, chime: 0 })
+  })
+
+  it('is enabled by default and honors setEnabled as a global mute', () => {
+    const audio = new BeepAudio()
+    expect(audio.getEnabled()).toBe(true)
+    audio.setEnabled(false)
+    expect(audio.getEnabled()).toBe(false)
+    // The mute gate is enforced before any context work: nothing throws.
+    expect(() => audio.play('tick')).not.toThrow()
+    audio.setEnabled(true)
+    expect(audio.getEnabled()).toBe(true)
+  })
+
   it('plays nothing before a gesture arms the engine (no throw, no console noise)', () => {
     const audio = new BeepAudio()
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})

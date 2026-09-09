@@ -1,0 +1,147 @@
+/* One volume row: title + description left, slider + readout + optional
+ * preview right. Same cell rhythm as the General-section rows (gap 8,
+ * pad 16/0, hairline separator; the section column strips it on the last
+ * child). */
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 0;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l2);
+}
+
+.rowText {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-right: 48px;
+}
+
+.title {
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 22px;
+  color: var(--dsw-alias-label-primary);
+}
+
+.desc {
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* Control cluster: preview pill, range slider, percentage readout. */
+.control {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Preview pill: compact ghost button matching the settings secondary style. */
+.preview {
+  padding: 5px 12px;
+  border: 0.5px solid var(--dsw-alias-border-l4);
+  border-radius: 14px;
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-primary);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.preview:hover:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.preview:disabled {
+  color: var(--dsw-alias-label-caption);
+  cursor: default;
+}
+
+/* Native range slider, themed with the alias tokens. The track uses the
+ * module fill with a filled leading portion; the thumb is a small round
+ * handle with a raised surface. */
+.slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 148px;
+  height: 20px;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.slider:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.slider:focus-visible {
+  outline: 2px solid var(--dsw-alias-brand-primary);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Track (webkit + firefox). */
+.slider::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(
+    to right,
+    var(--dsw-alias-brand-primary) 0%,
+    var(--dsw-alias-brand-primary) var(--dsh-beep-fill, 50%),
+    var(--dsw-alias-bg-module-platform) var(--dsh-beep-fill, 50%),
+    var(--dsw-alias-bg-module-platform) 100%
+  );
+}
+
+.slider::-moz-range-track {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--dsw-alias-bg-module-platform);
+}
+
+.slider::-moz-range-progress {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--dsw-alias-brand-primary);
+}
+
+/* Thumb. */
+.slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  margin-top: -5px;
+  border: none;
+  border-radius: 50%;
+  background: var(--dsw-alias-label-primary);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.25);
+}
+
+.slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border: none;
+  border-radius: 50%;
+  background: var(--dsw-alias-label-primary);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.25);
+}
+
+/* Percentage readout: tabular numerals so dragging never jitters. */
+.percent {
+  min-width: 40px;
+  text-align: right;
+  font-size: 12px;
+  line-height: 18px;
+  font-variant-numeric: tabular-nums;
+  color: var(--dsw-alias-label-secondary);
+}
