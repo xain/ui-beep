@@ -22,24 +22,24 @@ describe('beep settings section', () => {
     expect(section.chimeVolume).toBe(DEFAULT_VOICE_VOLUME)
   })
 
-  it('rejects volumes outside 0…1', () => {
-    expect(() => BeepSettingsSchema({ masterVolume: 1.5 })).toThrow(/<= 1/)
+  it('rejects volumes outside 0…2', () => {
+    expect(() => BeepSettingsSchema({ masterVolume: 2.5 })).toThrow(/<= 2/)
     expect(() => BeepSettingsSchema({ tickVolume: -0.2 })).toThrow(/>?= 0/)
   })
 
-  it('accepts a boundary-value section', () => {
+  it('accepts a boundary-value section up to the 2.0 ceiling', () => {
     const section = BeepSettingsSchema({
       enabled: false,
-      masterVolume: 1,
+      masterVolume: 2,
       tickVolume: 0,
       humVolume: 0.7,
-      chimeVolume: 0,
+      chimeVolume: 1.5,
     })
     expect(section.enabled).toBe(false)
-    expect(section.masterVolume).toBe(1)
+    expect(section.masterVolume).toBe(2)
     expect(section.tickVolume).toBe(0)
     expect(section.humVolume).toBe(0.7)
-    expect(section.chimeVolume).toBe(0)
+    expect(section.chimeVolume).toBe(1.5)
   })
 
   it('maps the row config onto the composition base', () => {

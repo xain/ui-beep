@@ -20,13 +20,13 @@ export type BeepVoice = 'tick' | 'hum' | 'chime'
 
 /** Audio engine options. */
 export interface BeepAudioOptions {
-  /** Master gain (0…1). Default 0.5. */
+  /** Master gain (0…2; above 1 amplifies past nominal full scale). Default 0.4. */
   volume?: number
   /** Minimum seconds between two plays of the same voice (debounce). Default 0.05. */
   minInterval?: number
 }
 
-/** Per-voice gain table (0…1), multiplied into the master bus on play. */
+/** Per-voice gain table (0…2), multiplied into the master bus on play. */
 export type BeepVoiceVolumes = Record<BeepVoice, number>
 
 /** The one audio engine instance per page. */
@@ -41,21 +41,22 @@ export class BeepAudio {
   private gestureBound = false
 
   constructor(options: BeepAudioOptions = {}) {
-    this.volume = clamp01(options.volume ?? 0.5)
+    this.volume = clampVolume(options.volume ?? DEFAULT_VOLUME)
     this.minInterval = options.minInterval ?? 0.05
   }
 
-  /** Current master volume (0…1). */
+  /** Current master volume (0…2). */
   getVolume(): number {
     return this.volume
   }
 
   /**
-   * Set master volume (0…1). Safe before the context exists.
+   * Set master volume (0…2; above 1 amplifies past full scale). Safe before
+   * the context exists.
    * @param value - linear gain.
    */
   setVolume(value: number): void {
-    this.volume = clamp01(value)
+    this.volume = clampVolume(value)
     if (this.master !== undefined) {
       this.master.gain.setTargetAtTime(this.volume, this.ctx?.currentTime ?? 0, 0.01)
     }
@@ -71,18 +72,19 @@ export class BeepAudio {
     this.enabled = value
   }
 
-  /** Current per-voice gain table (0…1). */
+  /** Current per-voice gain table (0…2). */
   getVoiceVolumes(): BeepVoiceVolumes {
     return { ...this.voiceVolumes }
   }
 
   /**
-   * Set one voice's gain (0…1). Multiplied into the master bus on play.
+   * Set one voice's gain (0…2; above 1 amplifies past full scale). Multiplied
+   * into the master bus on play.
    * @param voice - which voice to tune.
    * @param value - linear gain.
    */
   setVoiceVolume(voice: BeepVoice, value: number): void {
-    this.voiceVolumes[voice] = clamp01(value)
+    this.voiceVolumes[voice] = clampVolume(value)
   }
 
   /**
@@ -148,9 +150,16 @@ export class BeepAudio {
   }
 }
 
-/** Clamp a gain into 0…1. */
-function clamp01(value: number): number {
-  return Math.min(1, Math.max(0, value))
+/** Default master gain when no option is given (conservative). */
+const DEFAULT_VOLUME = 0.4
+
+/**
+ * Clamp a gain into 0…2. The ceiling is deliberately above Web Audio's
+ * nominal full scale (1.0): the user owns the loudness decision, so the
+ * engine only guards against nonsense values, never against loud ones.
+ */
+function clampVolume(value: number): number {
+  return Math.min(2, Math.max(0, value))
 }
 
 /**
@@ -249,26 +258,24 @@ function scheduleSoftBeat(
 
 /** Streaming-output tick: short 2 kHz pop, 60 ms. */
 function renderTick(ctx: AudioContext, destination: AudioNode, gain: number): void {
-  scheduleTone(ctx, destination, 2000, 0, 0.06, 0.2 * gain)
+  scheduleTone(ctx, destination, 2000, 0, 0.06, 0.5 * gain)
 }
 
 /**
  * Working hum: a soft, low "lub-dub" heartbeat — two gentle sine swells in
- * the warm 90–120 Hz range, spaced like a resting heartbeat. The slow attack,
- * the falling second beat, and the quiet level are what make it reassuring
- * rather than urgent.
+ * the warm 90–120 Hz range, spaced like a resting heartbeat. The slow attack
+ * and the falling second beat are what make it reassuring rather than urgent.
  */
 function renderHum(ctx: AudioContext, destination: AudioNode, gain: number): void {
   // "lub": the main beat, with a quiet octave harmonic for small-speaker
   // audibility. "dub": the softer, lower follow-up, like a real heartbeat.
-  // Peaks are deliberately above the tick/chime so the calm heartbeat stays
-  // clearly audible through the master gain (default 0.5) without ever
-  // becoming loud.
-  scheduleSoftBeat(ctx, destination, 0, 118, 0.55 * gain, 0.4, 236)
-  scheduleSoftBeat(ctx, destination, 0.32, 92, 0.4 * gain, 0.34)
+  // Peaks are chosen so the loudest instantaneous sum (lub + its harmonic)
+  // stays under the 1.0 clip threshold at full master/voice gain.
+  scheduleSoftBeat(ctx, destination, 0, 118, 0.7 * gain, 0.4, 236)
+  scheduleSoftBeat(ctx, destination, 0.32, 92, 0.55 * gain, 0.34)
 }
 
 /** Awaiting-input chime: two-tone bell (880 Hz + 1320 Hz), 500 ms. */
 function renderChime(ctx: AudioContext, destination: AudioNode, gain: number): void {
-  scheduleTone(ctx, destination, 880, 0, 0.5, 0.4 * gain, 1320)
+  scheduleTone(ctx, destination, 880, 0, 0.5, 0.6 * gain, 1320)
 }

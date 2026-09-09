@@ -5,13 +5,19 @@
  * the value prop is the persisted setting, never the drag echo — so a rapid
  * drag is throttled by the settings write path and the readout never jumps
  * ahead of what is actually applied.
+ *
+ * The slider spans 0–200 %: 100 % is Web Audio's nominal full scale, and the
+ * stretch past it is the user's own headroom (values above full scale amplify
+ * the tone peaks and may clip). The track fill follows the slider position so
+ * the visible fill never exceeds the track.
  */
 import type { CSSProperties } from 'react'
 import type { TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 import type { BeepKey } from './locales.ts'
+import { VOLUME_MAX } from '../beep-settings.ts'
 import css from './VolumeRow.module.css'
 
-/** Volume readout scale: 0…1 maps to 0…100%. */
+/** Volume readout scale: 0…2 maps to 0…200 %. */
 const PERCENT = 100
 
 /** The section's translate function, narrowed to its own dictionary keys. */
@@ -25,11 +31,11 @@ export interface VolumeRowProps {
   description: BeepKey
   /** Preview button aria-label key (omit to hide the preview control). */
   previewLabel?: BeepKey
-  /** Current volume 0…1 (the persisted setting). */
+  /** Current volume 0…2 (the persisted setting). */
   value: number
   /** Whether the control accepts input. */
   disabled: boolean
-  /** Callback with the new volume 0…1. */
+  /** Callback with the new volume 0…2. */
   onChange: (value: number) => void
   /** Callback firing the preview play. */
   onPreview?: () => void
@@ -43,6 +49,8 @@ export interface VolumeRowProps {
  * @returns the row element tree.
  */
 export function VolumeRow({ title, description, previewLabel, value, disabled, onChange, onPreview, t }: VolumeRowProps) {
+  const percent = Math.round(value * PERCENT)
+  const sliderMax = Math.round(VOLUME_MAX * PERCENT)
   return (
     <div className={css.row}>
       <div className={css.rowText}>
@@ -66,16 +74,16 @@ export function VolumeRow({ title, description, previewLabel, value, disabled, o
         <input
           type="range"
           className={css.slider}
-          style={{ '--dsh-beep-fill': `${Math.round(value * PERCENT)}%` } as CSSProperties}
+          style={{ '--dsh-beep-fill': `${Math.round((percent / sliderMax) * 100)}%` } as CSSProperties}
           min={0}
-          max={100}
-          value={Math.round(value * PERCENT)}
-          aria-valuetext={t('percent', { value: String(Math.round(value * PERCENT)) })}
+          max={sliderMax}
+          value={percent}
+          aria-valuetext={t('percent', { value: String(percent) })}
           aria-label={t(title)}
           disabled={disabled}
           onChange={(event) => { onChange(Number(event.target.value) / PERCENT) }}
         />
-        <span className={css.percent}>{t('percent', { value: String(Math.round(value * PERCENT)) })}</span>
+        <span className={css.percent}>{t('percent', { value: String(percent) })}</span>
       </div>
     </div>
   )

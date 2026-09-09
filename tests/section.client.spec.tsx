@@ -104,6 +104,7 @@ describe('BeepSettingsSection', () => {
   it('forwards slider changes to setVolume with the voice identity', () => {
     const { view, setVolume } = mount()
     const sliders = [...view.container.querySelectorAll('input[type="range"]')]
+    expect(sliders.length).toBe(4)
     // Master (first slider) → 60%.
     fireEvent.change(sliders[0] as HTMLInputElement, { target: { value: '60' } })
     expect(setVolume).toHaveBeenCalledWith('master', 0.6)
@@ -116,6 +117,18 @@ describe('BeepSettingsSection', () => {
     // Chime (fourth) → 90%.
     fireEvent.change(sliders[3] as HTMLInputElement, { target: { value: '90' } })
     expect(setVolume).toHaveBeenCalledWith('chime', 0.9)
+  })
+
+  it('allows sliders past 100% (the user owns the loudness ceiling)', () => {
+    const { view, setVolume } = mount()
+    const sliders = [...view.container.querySelectorAll('input[type="range"]')]
+    expect((sliders[0] as HTMLInputElement).max).toBe('200')
+    // Master (first slider) → 150% → gain 1.5.
+    fireEvent.change(sliders[0] as HTMLInputElement, { target: { value: '150' } })
+    expect(setVolume).toHaveBeenCalledWith('master', 1.5)
+    // Chime (fourth) → 200% → gain 2.0 (full ceiling).
+    fireEvent.change(sliders[3] as HTMLInputElement, { target: { value: '200' } })
+    expect(setVolume).toHaveBeenCalledWith('chime', 2)
   })
 
   it('forwards each preview button to preview with its voice', () => {

@@ -13,13 +13,13 @@ import {
 export interface BeepSettingsRowState {
   /** Whether any beep plays at all. */
   enabled: boolean
-  /** Master gain 0…1. */
+  /** Master gain 0…2. */
   masterVolume: number
-  /** Streaming-output tick gain 0…1. */
+  /** Streaming-output tick gain 0…2. */
   tickVolume: number
-  /** Working heartbeat hum gain 0…1. */
+  /** Working heartbeat hum gain 0…2. */
   humVolume: number
-  /** Awaiting-input chime gain 0…1. */
+  /** Awaiting-input chime gain 0…2. */
   chimeVolume: number
   /** Whether the section is ready (a resolved scope value stands). */
   ready: boolean

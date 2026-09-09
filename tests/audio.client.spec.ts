@@ -7,22 +7,23 @@ import { describe, expect, it, vi } from 'vitest'
 import { BeepAudio } from '../src/client/audio.ts'
 
 describe('BeepAudio', () => {
-  it('defaults volume to 0.5 and clamps to 0…1', () => {
+  it('defaults volume to 0.4 and clamps to 0…2 (user owns the ceiling)', () => {
     const audio = new BeepAudio()
-    expect(audio.getVolume()).toBe(0.5)
-    audio.setVolume(1.7)
-    expect(audio.getVolume()).toBe(1)
+    expect(audio.getVolume()).toBe(0.4)
+    audio.setVolume(2.5)
+    expect(audio.getVolume()).toBe(2)
     audio.setVolume(-1)
     expect(audio.getVolume()).toBe(0)
   })
 
-  it('defaults every voice to full gain and clamps per-voice values', () => {
+  it('defaults every voice to full gain and clamps per-voice values to 0…2', () => {
     const audio = new BeepAudio()
     expect(audio.getVoiceVolumes()).toEqual({ tick: 1, hum: 1, chime: 1 })
     audio.setVoiceVolume('tick', 0.4)
     audio.setVoiceVolume('hum', 2)
-    audio.setVoiceVolume('chime', -1)
-    expect(audio.getVoiceVolumes()).toEqual({ tick: 0.4, hum: 1, chime: 0 })
+    audio.setVoiceVolume('chime', 2.5)
+    audio.setVoiceVolume('tick', -1)
+    expect(audio.getVoiceVolumes()).toEqual({ tick: 0, hum: 2, chime: 2 })
   })
 
   it('is enabled by default and honors setEnabled as a global mute', () => {

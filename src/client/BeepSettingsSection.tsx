@@ -17,7 +17,7 @@ import css from './BeepSettingsSection.module.css'
 export interface BeepSettingsSectionInjected {
   /** Toggle whether any beep plays. */
   setEnabled: (enabled: boolean) => void
-  /** Set one voice's volume 0…1 (and the master gain when voice is 'master'). */
+  /** Set one voice's volume 0…2 (and the master gain when voice is 'master'). */
   setVolume: (voice: BeepVoice | 'master', value: number) => void
   /** Play one voice through the engine (preview audition). */
   preview: (voice: BeepVoice) => void

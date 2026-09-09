@@ -88,8 +88,12 @@ The cordis row accepts a `config:` object (all optional):
 The row `config:` seeds the durable `ui-beep` user-settings section as the
 composition base. The **Settings → 提示音 (Sound)** page then owns the live
 values: an enable switch, a master volume, and one volume per voice
-(streaming tick / working hum / awaiting-input chime), each 0–100 % with a
-preview button. Changes apply immediately and persist in the user-settings
+(streaming tick / working hum / awaiting-input chime), each 0–200 % with a
+preview button. 100 % is Web Audio's nominal full scale; the stretch past it
+is the user's own headroom — the plugin caps nothing, so anyone who raises a
+slider decides for themselves how loud the beeps are (values above full scale
+may clip). The defaults stay conservative so a first-time user is not
+startled. Changes apply immediately and persist in the user-settings
 document; a user override always wins over the row config.
 
 ## Model Experience
