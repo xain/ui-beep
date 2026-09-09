@@ -1,7 +1,7 @@
 {
   "name": "@xain_npm/dsh-client-ui-beep",
   "description": "Web agent-heartbeat sonification for DeepSeek Harness: a calm lub-dub hum while agents work, ticks on streaming output, chime when a session awaits your input",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "publishConfig": {
     "access": "public"
   },
