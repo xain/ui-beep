@@ -427,3 +427,24 @@ describe('watchBeepState', () => {
     stop()
   })
 })
+
+// ── regression: hum must survive a long silent thinking gap ──────────────
+
+it('keeps humming through a long thinking gap after streaming stops', () => {
+  vi.useFakeTimers()
+  const beeps: string[] = []
+  const { ctx, stop } = watch(beeps, 1000, { streamingPauseMs: 1500 })
+  ctx.set({ ids: [ID], byId: { [ID]: { running: true } }, current: ID })
+  ctx.stream(ID, { text: 'analysis...' })
+  expect(beeps).toEqual(['hum', 'tick'])
+  // Streaming stops; the hum resumes after the streaming window.
+  vi.advanceTimersByTime(1500)
+  expect(beeps).toEqual(['hum', 'tick', 'hum'])
+  // Now a long silent thinking gap with NO further conversation events: the
+  // heartbeat must keep firing on its interval (this is the real-world
+  // "agent is thinking for a minute" case).
+  vi.advanceTimersByTime(10_000)
+  const hums = beeps.filter(b => b === 'hum').length
+  expect(hums).toBeGreaterThan(5)
+  stop()
+})
