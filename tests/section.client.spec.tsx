@@ -60,7 +60,8 @@ function mount(overrides: Partial<{
   const setEnabled = vi.fn()
   const setVolume = vi.fn()
   const preview = vi.fn()
-  const injected: BeepSettingsSectionInjected = { setEnabled, setVolume, preview }
+  const setCustomAudio = vi.fn()
+  const injected: BeepSettingsSectionInjected = { setEnabled, setVolume, preview, setCustomAudio }
   const view = render(
     <BeepSettingsSection
       t={makeT}
@@ -68,14 +69,14 @@ function mount(overrides: Partial<{
       {...injected}
     />,
   )
-  return { view, setEnabled, setVolume, preview }
+  return { view, setEnabled, setVolume, preview, setCustomAudio }
 }
 
 describe('BeepSettingsSection', () => {
   it('renders the heading, intro, enable switch, and all four volume rows', () => {
     const { view } = mount()
     expect(screen.getByRole('heading', { name: 'Sound' })).toBeTruthy()
-    expect(screen.getByText('Volume of the beep for each state; changes apply immediately')).toBeTruthy()
+    expect(screen.getByText('Volume and custom audio for each state; changes apply immediately')).toBeTruthy()
     // Enable switch + 4 sliders (master, tick, hum, chime).
     expect(screen.getByRole('switch', { name: 'Enable beeps' })).toBeTruthy()
     const sliders = view.container.querySelectorAll('input[type="range"]')
@@ -144,5 +145,53 @@ describe('BeepSettingsSection', () => {
     expect(preview).toHaveBeenCalledWith('hum' satisfies BeepVoice)
     fireEvent.click(previewButtons[2] as HTMLButtonElement)
     expect(preview).toHaveBeenCalledWith('chime' satisfies BeepVoice)
+  })
+
+  it('shows a choose-audio button per voice and no badge while using the built-in sound', () => {
+    const { view } = mount()
+    const chooseButtons = [...view.container.querySelectorAll('button')].filter(button =>
+      ['Choose an audio file for the streaming beep', 'Choose an audio file for the working beep',
+        'Choose an audio file for the waiting beep'].includes(button.getAttribute('aria-label') ?? ''))
+    expect(chooseButtons.length).toBe(3)
+    expect(screen.queryByText('Custom')).toBeNull()
+  })
+
+  it('opens the file browser from a choose button and restores default clears the path', () => {
+    const { view, setCustomAudio } = mount()
+    const choose = [...view.container.querySelectorAll('button')].find(button =>
+      button.getAttribute('aria-label') === 'Choose an audio file for the working beep')
+    fireEvent.click(choose as HTMLButtonElement)
+    // The browser dialog opens.
+    expect(screen.getByRole('dialog', { name: 'Choose a beep audio file' })).toBeTruthy()
+    // Cancel closes it without writing.
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(setCustomAudio).not.toHaveBeenCalled()
+  })
+
+  it('renders the custom badge and restore action when a path is set', () => {
+    const { view, setCustomAudio } = mount()
+    const store = createBeepSettingsRowStore().create()
+    store.actions.sync({
+      enabled: true,
+      masterVolume: 0.5,
+      tickVolume: 0.3,
+      humVolume: 0.8,
+      chimeVolume: 1,
+      humPath: '/music/heartbeat.mp3',
+    }, true)
+    view.rerender(
+      <BeepSettingsSection
+        t={makeT}
+        useStore={selector => selector(store.getSnapshot())}
+        setEnabled={vi.fn()}
+        setVolume={vi.fn()}
+        preview={vi.fn()}
+        setCustomAudio={setCustomAudio}
+      />,
+    )
+    expect(screen.getByText('Custom')).toBeTruthy()
+    expect(screen.getByText('/music/heartbeat.mp3')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Restore the built-in working sound' }))
+    expect(setCustomAudio).toHaveBeenCalledWith('hum', undefined)
   })
 })

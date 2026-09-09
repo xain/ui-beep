@@ -65,6 +65,13 @@ interface TrackedSession {
 export interface BeepWatcherCallbacks {
   /** Called for every state-transition voice that should play. */
   onBeep(voice: BeepVoice): void
+  /**
+   * Called when the working heartbeat stops (the last busy session went idle,
+   * an interaction went pending, or output started streaming). The audio
+   * engine uses it to stop a looping custom hum audio file; a synthesized
+   * hum needs no stop signal.
+   */
+  onHumStop?(): void
 }
 
 /** Watcher tuning. */
@@ -129,11 +136,13 @@ export function watchBeepState(
     lastTextGrowthAt !== null && Date.now() - lastTextGrowthAt < streamingPauseMs
 
   const stopHeartbeat = (): void => {
+    if (!humming) return
     humming = false
     if (heartbeatTimer !== undefined) {
       clearInterval(heartbeatTimer)
       heartbeatTimer = undefined
     }
+    callbacks.onHumStop?.()
   }
 
   /** Start/stop the heartbeat from the current shared facts. */

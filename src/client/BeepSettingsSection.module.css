@@ -97,3 +97,81 @@
 .switch[data-on='true'] .thumb {
   transform: translateX(16px);
 }
+/* Custom-audio row under each voice volume row: choose button, custom badge,
+ * the chosen path, and the restore-default action. */
+.voiceBlock {
+  display: flex;
+  flex-direction: column;
+}
+
+.customRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 0 16px;
+  margin-top: -4px;
+}
+
+.customButton {
+  padding: 4px 12px;
+  border: 0.5px solid var(--dsw-alias-border-l4);
+  border-radius: 12px;
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-primary);
+  cursor: pointer;
+}
+
+.customButton:hover:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.customButton:disabled {
+  color: var(--dsw-alias-label-caption);
+  cursor: default;
+}
+
+.customBadge {
+  padding: 2px 8px;
+  border-radius: 8px;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--dsw-alias-brand-primary);
+  background: color-mix(in srgb, var(--dsw-alias-brand-primary) 12%, transparent);
+}
+
+.customPath {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.customRestore {
+  flex: none;
+  padding: 4px 10px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.customRestore:hover:not(:disabled) {
+  color: var(--dsw-alias-label-primary);
+}
+
+.customRestore:disabled {
+  color: var(--dsw-alias-label-caption);
+  cursor: default;
+}

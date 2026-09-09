@@ -107,6 +107,9 @@ export function apply(ctx: Context, config?: BeepConfig): void {
       audio.setVoiceVolume('tick', section.tickVolume)
       audio.setVoiceVolume('hum', section.humVolume)
       audio.setVoiceVolume('chime', section.chimeVolume)
+      audio.setCustomAudio('tick', section.tickPath)
+      audio.setCustomAudio('hum', section.humPath)
+      audio.setCustomAudio('chime', section.chimePath)
     }
     bound?.sync(section, snapshot.writable)
   }
@@ -123,6 +126,9 @@ export function apply(ctx: Context, config?: BeepConfig): void {
   ctx.effect(() => {
     return watchBeepState(ctx, {
       onBeep: (voice: BeepVoice) => { audio.play(voice) },
+      // A looping custom hum must stop when the working state ends; the
+      // synthesized hum needs no stop signal.
+      onHumStop: () => { audio.stopLoop('hum') },
     }, {
       ...(config?.heartbeatMs === undefined ? {} : { heartbeatMs: config.heartbeatMs }),
       ...(config?.pendingFirstRechimeMs === undefined ? {} : { pendingFirstRechimeMs: config.pendingFirstRechimeMs }),
@@ -148,7 +154,13 @@ export function apply(ctx: Context, config?: BeepConfig): void {
             : voice === 'hum' ? 'humVolume' : 'chimeVolume'
         void host.set(field, value)
       },
-      preview: (voice) => { audio.play(voice) },
+      preview: (voice) => { audio.preview(voice) },
+      setCustomAudio: (voice, path) => {
+        const field = voice === 'tick' ? 'tickPath'
+          : voice === 'hum' ? 'humPath' : 'chimePath'
+        if (path === undefined) void host.unset(field)
+        else void host.set(field, path)
+      },
     }
   }
   ctx.slots.inject('settings.section', () => ctx.slots.register({

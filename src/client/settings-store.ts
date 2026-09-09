@@ -21,6 +21,12 @@ export interface BeepSettingsRowState {
   humVolume: number
   /** Awaiting-input chime gain 0…2. */
   chimeVolume: number
+  /** Custom audio path for the streaming tick; undefined = built-in tone. */
+  tickPath?: string
+  /** Custom audio path for the working hum; undefined = built-in tone. */
+  humPath?: string
+  /** Custom audio path for the awaiting-input chime; undefined = built-in tone. */
+  chimePath?: string
   /** Whether the section is ready (a resolved scope value stands). */
   ready: boolean
   /** Whether the Host document accepts writes; memory mode never does. */
@@ -62,6 +68,12 @@ export function createBeepSettingsRowStore(): EngineStoreHandle<BeepSettingsRowS
         draft.tickVolume = section.tickVolume
         draft.humVolume = section.humVolume
         draft.chimeVolume = section.chimeVolume
+        if (section.tickPath === undefined) delete draft.tickPath
+        else draft.tickPath = section.tickPath
+        if (section.humPath === undefined) delete draft.humPath
+        else draft.humPath = section.humPath
+        if (section.chimePath === undefined) delete draft.chimePath
+        else draft.chimePath = section.chimePath
       },
     },
   })

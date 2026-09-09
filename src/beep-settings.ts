@@ -20,6 +20,9 @@ import z from '@deepseek-ai/schemastery'
 /** Settings namespace owned by the ui-beep plugin. */
 export const BEEP_SETTINGS_NAMESPACE = 'ui-beep'
 
+/** One playable beep voice — shared by the audio engine and the host routes. */
+export type BeepVoice = 'tick' | 'hum' | 'chime'
+
 /** Field carrying whether any beep plays. */
 export const ENABLED_FIELD = 'enabled'
 
@@ -34,6 +37,15 @@ export const HUM_VOLUME_FIELD = 'humVolume'
 
 /** Field carrying the awaiting-input chime gain. */
 export const CHIME_VOLUME_FIELD = 'chimeVolume'
+
+/** Field carrying the custom audio path for the streaming tick. */
+export const TICK_PATH_FIELD = 'tickPath'
+
+/** Field carrying the custom audio path for the working hum. */
+export const HUM_PATH_FIELD = 'humPath'
+
+/** Field carrying the custom audio path for the awaiting-input chime. */
+export const CHIME_PATH_FIELD = 'chimePath'
 
 /** Smallest accepted volume (silent). */
 export const VOLUME_MIN = 0
@@ -54,7 +66,12 @@ export const DEFAULT_MASTER_VOLUME = 0.4
 /** Per-voice gains default to full: the baked per-voice peaks stay untouched. */
 export const DEFAULT_VOICE_VOLUME = 1
 
-/** Durable beep section shared by the Host schema and the browser scope. */
+/**
+ * Durable beep section shared by the Host schema and the browser scope.
+ * The `*Path` fields are optional absolute filesystem paths to a user-supplied
+ * audio file for that voice; an absent or unreadable path falls back to the
+ * built-in synthesized tone.
+ */
 export interface BeepSettings {
   /** Whether any beep plays at all. */
   enabled: boolean
@@ -66,6 +83,12 @@ export interface BeepSettings {
   humVolume: number
   /** Awaiting-input chime gain 0…2. */
   chimeVolume: number
+  /** Custom audio file path for the streaming tick; undefined = built-in tone. */
+  tickPath?: string
+  /** Custom audio file path for the working hum; undefined = built-in tone. */
+  humPath?: string
+  /** Custom audio file path for the awaiting-input chime; undefined = built-in tone. */
+  chimePath?: string
 }
 
 /** Durable beep schema; also the wire envelope the browser scope validates against. */
@@ -75,12 +98,16 @@ export const BeepSettingsSchema: z<BeepSettings> = z.object({
   [TICK_VOLUME_FIELD]: z.number().min(VOLUME_MIN).max(VOLUME_MAX).default(DEFAULT_VOICE_VOLUME),
   [HUM_VOLUME_FIELD]: z.number().min(VOLUME_MIN).max(VOLUME_MAX).default(DEFAULT_VOICE_VOLUME),
   [CHIME_VOLUME_FIELD]: z.number().min(VOLUME_MIN).max(VOLUME_MAX).default(DEFAULT_VOICE_VOLUME),
+  [TICK_PATH_FIELD]: z.string().required(false),
+  [HUM_PATH_FIELD]: z.string().required(false),
+  [CHIME_PATH_FIELD]: z.string().required(false),
 })
 
 /**
  * The row-config contribution to the composition base. `volume` maps to the
- * master gain and `enabled` to the enable switch; the per-voice gains have no
- * row-config counterpart and stay schema defaults until the user overrides.
+ * master gain and `enabled` to the enable switch; the per-voice gains and
+ * custom paths have no row-config counterpart and stay schema defaults until
+ * the user overrides.
  * @param config - the cordis row config, when one is present.
  * @returns the base layer, or undefined to leave schema defaults standing.
  */

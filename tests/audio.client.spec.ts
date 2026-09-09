@@ -65,4 +65,42 @@ describe('BeepAudio', () => {
     listeners.get('pointerdown')?.()
     expect(target.removeEventListener).toHaveBeenCalledTimes(2)
   })
+
+  it('tracks custom audio paths per voice and reports them back', () => {
+    const audio = new BeepAudio()
+    expect(audio.getCustomPaths()).toEqual({})
+    audio.setCustomAudio('tick', '/music/tick.wav')
+    audio.setCustomAudio('hum', '/music/hum.mp3')
+    expect(audio.getCustomPaths()).toEqual({ tick: '/music/tick.wav', hum: '/music/hum.mp3' })
+    // Clearing a path removes it (restore default).
+    audio.setCustomAudio('tick', undefined)
+    expect(audio.getCustomPaths()).toEqual({ hum: '/music/hum.mp3' })
+  })
+
+  it('clearing a custom hum path stops a running loop without throwing', () => {
+    const audio = new BeepAudio()
+    audio.setCustomAudio('hum', '/music/hum.mp3')
+    // No loop is running yet; stopLoop is a safe no-op.
+    expect(() => audio.stopLoop('hum')).not.toThrow()
+    audio.setCustomAudio('hum', undefined)
+    expect(() => audio.stopLoop('hum')).not.toThrow()
+  })
+
+  it('preview is a safe no-op before the engine is armed', () => {
+    // jsdom has no AudioContext; preview must fail soft like play, and never
+    // start a loop.
+    const audio = new BeepAudio()
+    audio.setCustomAudio('hum', '/music/hum.mp3')
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    expect(() => audio.preview('tick')).not.toThrow()
+    expect(() => audio.preview('hum')).not.toThrow()
+    expect(() => audio.preview('chime')).not.toThrow()
+    expect(warn).not.toHaveBeenCalled()
+    warn.mockRestore()
+  })
+
+  it('constructs with custom paths from options', () => {
+    const audio = new BeepAudio({ customPaths: { chime: '/sounds/chime.ogg' } })
+    expect(audio.getCustomPaths()).toEqual({ chime: '/sounds/chime.ogg' })
+  })
 })

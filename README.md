@@ -96,6 +96,33 @@ may clip). The defaults stay conservative so a first-time user is not
 startled. Changes apply immediately and persist in the user-settings
 document; a user override always wins over the row config.
 
+### Custom audio per voice
+
+Each voice can play a **user-supplied audio file** instead of the built-in
+tone. The Settings page shows a *Choose audio* button per voice; picking one
+opens a whole-filesystem file browser (rooted at `/` or the drive root) that
+lists ordinary user folders and audio files (`.mp3`, `.wav`, `.ogg`, `.flac`,
+`.m4a`, `.aac`, `.opus`, `.webm`) — hidden (dotfile) entries and system
+directories are skipped. The chosen **absolute path** is stored in the
+settings document — the file is never uploaded or copied, and it can be
+moved/replaced on disk freely. Playback semantics:
+
+- **tick / chime** — the custom file plays once per trigger.
+- **hum** — the custom file **loops seamlessly** while the agent is busy, so
+  the file's own length sets the heartbeat cadence (a longer file = a slower
+  beat; replace the file to change the interval).
+- **Preview** (the *试听/Preview* button) always plays the custom file **once**
+  — even for hum — so auditioning never loops.
+- A voice with **no path, or a path whose file cannot be read or decoded**
+  (missing, moved, permission-denied, unsupported format) falls back to the
+  built-in tone automatically. The *Restore default* button clears the path.
+
+The Host half serves the file through two loopback, browser-authenticated
+routes (`GET /ui-beep/audio/:voice`, `GET /ui-beep/browse`) — the path comes
+from the settings document, never from the request URL, so the routes cannot
+be pointed at arbitrary files. The browser fetches and decodes each file
+once, then caches the decoded buffer.
+
 ## Model Experience
 
 None. The package is a browser-side read-only sonification of already-logged session facts (running/busy, streaming output, pending interactions); it plays audio and registers nothing model-facing. The model's own view of its work stays with the tools and host services that produce those facts.

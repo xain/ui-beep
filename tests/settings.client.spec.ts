@@ -13,6 +13,17 @@ describe('beep settings section', () => {
     expect(BEEP_SETTINGS_NAMESPACE).toBe('ui-beep')
   })
 
+  it('accepts custom audio path fields and leaves them optional', () => {
+    const section = BeepSettingsSchema({
+      tickPath: '/music/tick.wav',
+      humPath: '/music/hum.mp3',
+    })
+    expect(section.tickPath).toBe('/music/tick.wav')
+    expect(section.humPath).toBe('/music/hum.mp3')
+    // A path never supplied stays absent from the output.
+    expect('chimePath' in section).toBe(false)
+  })
+
   it('defaults every field when the section is empty', () => {
     const section = BeepSettingsSchema()
     expect(section.enabled).toBe(DEFAULT_ENABLED)
@@ -20,6 +31,9 @@ describe('beep settings section', () => {
     expect(section.tickVolume).toBe(DEFAULT_VOICE_VOLUME)
     expect(section.humVolume).toBe(DEFAULT_VOICE_VOLUME)
     expect(section.chimeVolume).toBe(DEFAULT_VOICE_VOLUME)
+    expect('tickPath' in section).toBe(false)
+    expect('humPath' in section).toBe(false)
+    expect('chimePath' in section).toBe(false)
   })
 
   it('rejects volumes outside 0…2', () => {
