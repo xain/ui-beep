@@ -143,7 +143,7 @@ describe('watchBeepState', () => {
     stop()
   })
 
-  it('stops humming when the last running session goes idle', () => {
+  it('stops humming when the last running session goes idle, chiming once on finish', () => {
     vi.useFakeTimers()
     const beeps: string[] = []
     const { ctx, stop } = watch(beeps, 1000)
@@ -152,8 +152,10 @@ describe('watchBeepState', () => {
     vi.advanceTimersByTime(1000)
     expect(beeps).toEqual(['hum', 'hum'])
     ctx.set({ ids: [ID], byId: { [ID]: { running: false } } })
+    // The end-of-work chime fires once; the heartbeat stops, so no more hums.
+    expect(beeps).toEqual(['hum', 'hum', 'chime'])
     vi.advanceTimersByTime(5000)
-    expect(beeps).toEqual(['hum', 'hum'])
+    expect(beeps).toEqual(['hum', 'hum', 'chime'])
     stop()
   })
 
@@ -366,5 +368,62 @@ describe('watchBeepState', () => {
     stop()
     vi.advanceTimersByTime(120_000)
     expect(beeps).toEqual(['hum', 'chime'])
+  })
+
+  // ── end-of-work chime ───────────────────────────────────────────────────
+
+  it('chimes when the last busy session goes idle (work finished)', () => {
+    const beeps: string[] = []
+    const { ctx, stop } = watch(beeps)
+    // Page loads idle: no chime.
+    ctx.set({ ids: [ID], byId: { [ID]: { running: false } } })
+    expect(beeps).toEqual([])
+    // Work starts, then finishes.
+    ctx.set({ ids: [ID], byId: { [ID]: { running: true } } })
+    expect(beeps).toEqual(['hum'])
+    ctx.set({ ids: [ID], byId: { [ID]: { running: false } } })
+    expect(beeps).toEqual(['hum', 'chime'])
+    stop()
+  })
+
+  it('does not chime twice when idle stays idle after a finish', () => {
+    const beeps: string[] = []
+    const { ctx, stop } = watch(beeps)
+    ctx.set({ ids: [ID], byId: { [ID]: { running: true } } })
+    ctx.set({ ids: [ID], byId: { [ID]: { running: false } } })
+    expect(beeps).toEqual(['hum', 'chime'])
+    // Further idle observations (other list refreshes) must not re-chime.
+    ctx.set({ ids: [ID], byId: { [ID]: { running: false } } })
+    expect(beeps).toEqual(['hum', 'chime'])
+    stop()
+  })
+
+  it('does not chime on a page that loads with nothing running', () => {
+    const beeps: string[] = []
+    const { ctx, stop } = watch(beeps)
+    ctx.set({ ids: [ID], byId: { [ID]: { running: false } } })
+    expect(beeps).toEqual([])
+    stop()
+  })
+
+  // ── hum state change (for the mute toggle's immediate beat) ─────────────
+
+  it('reports the heartbeat active/inactive transitions', () => {
+    vi.useFakeTimers()
+    const states: boolean[] = []
+    const ctx = makeCtx()
+    const stop = watchBeepState(ctx as never, {
+      onBeep: () => {},
+      onHumStateChange: (active) => { states.push(active) },
+    }, { heartbeatMs: 1000 })
+    ctx.set({ ids: [ID], byId: { [ID]: { running: false } } })
+    expect(states).toEqual([])
+    // Busy starts the heartbeat: active.
+    ctx.set({ ids: [ID], byId: { [ID]: { running: true } } })
+    expect(states).toEqual([true])
+    // Idle stops it: inactive.
+    ctx.set({ ids: [ID], byId: { [ID]: { running: false } } })
+    expect(states).toEqual([true, false])
+    stop()
   })
 })

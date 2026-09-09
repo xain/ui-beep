@@ -72,6 +72,14 @@ export interface BeepWatcherCallbacks {
    * hum needs no stop signal.
    */
   onHumStop?(): void
+  /**
+   * Called when the working heartbeat transitions between active and
+   * inactive. The mute toggle uses it to know whether an immediate hum is
+   * warranted when beeps are re-enabled (active = a busy session is humming
+   * right now, so unmuting should play a beat at once instead of waiting for
+   * the next heartbeat interval).
+   */
+  onHumStateChange?(active: boolean): void
 }
 
 /** Watcher tuning. */
@@ -143,6 +151,7 @@ export function watchBeepState(
       heartbeatTimer = undefined
     }
     callbacks.onHumStop?.()
+    callbacks.onHumStateChange?.(false)
   }
 
   /** Start/stop the heartbeat from the current shared facts. */
@@ -152,6 +161,7 @@ export function watchBeepState(
       if (humming) return
       humming = true
       callbacks.onBeep('hum') // first beat immediately, then on the interval
+      callbacks.onHumStateChange?.(true)
       heartbeatTimer = setInterval(() => callbacks.onBeep('hum'), heartbeatMs)
     } else {
       stopHeartbeat()
@@ -247,6 +257,10 @@ export function watchBeepState(
   }
 
   // ── list watcher: busy facts + pending-interaction chime ─────────────────
+  // `wasBusy` remembers whether any session was running on the previous pass,
+  // so the transition into "nothing running any more" can fire the end-of-work
+  // chime (the agent finished and it is the user's turn again).
+  let wasBusy = false
   const handleList = (): void => {
     const state = ctx.sessions.list.getSnapshot()
     const pending = ctx.uiSession.pendingInteractions.getSnapshot()
@@ -290,6 +304,14 @@ export function watchBeepState(
         tracked.set(id, { pending: false, baselined: true })
       }
     }
+    // End-of-work chime: the last busy session just went idle — the agent has
+    // finished and it is the user's turn again. Only the transition from
+    // running to not-running fires it; a session that was idle the whole time
+    // (initial page load with nothing running) does not chime.
+    if (wasBusy && !anyRunning) {
+      callbacks.onBeep('chime')
+    }
+    wasBusy = anyRunning
     syncConversation(state)
     evaluateHeartbeat()
   }

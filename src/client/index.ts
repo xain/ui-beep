@@ -101,6 +101,15 @@ export function apply(ctx: Context, config?: BeepConfig): void {
   const store = createBeepSettingsRowStore()
   let bound: BoundActions<typeof store> | undefined
 
+  // The composer mute toggle's reactive source: true = beeps muted.
+  const muteStore = createSnapshotStore<{ value: boolean }>({ value: !(config?.enabled ?? DEFAULT_ENABLED) })
+  // Whether a busy session is humming right now (fed by the watcher's
+  // onHumStateChange). Used to play an immediate beat when beeps are
+  // re-enabled, instead of waiting for the next heartbeat interval.
+  let humActive = false
+  // Tracks the previous enabled state so the mute→unmute edge is visible.
+  let wasEnabled = config?.enabled ?? DEFAULT_ENABLED
+
   const sync = (): void => {
     const snapshot = host.getSnapshot()
     const section = snapshot.value
@@ -116,11 +125,15 @@ export function apply(ctx: Context, config?: BeepConfig): void {
       audio.setCustomAudio('hum', section.humPath)
       audio.setCustomAudio('chime', section.chimePath)
       muteStore.update(draft => { draft.value = !section.enabled })
+      // Unmute while a busy session is humming: play a beat at once so the
+      // user hears the state change instead of waiting for the interval.
+      if (section.enabled && !wasEnabled && humActive) {
+        audio.play('hum')
+      }
+      wasEnabled = section.enabled
     }
     bound?.sync(section, snapshot.writable)
   }
-  // The composer mute toggle's reactive source: true = beeps muted.
-  const muteStore = createSnapshotStore<{ value: boolean }>({ value: !(config?.enabled ?? DEFAULT_ENABLED) })
   ctx.effect(() => host.subscribe(sync), 'ui-beep: settings scope adoption')
   // Adopt the initial resolved value (already folded by the Host) — the
   // scope's first snapshot arrives before the mirror's first describe, so
@@ -137,6 +150,9 @@ export function apply(ctx: Context, config?: BeepConfig): void {
       // A looping custom hum must stop when the working state ends; the
       // synthesized hum needs no stop signal.
       onHumStop: () => { audio.stopLoop('hum') },
+      // Remember whether the heartbeat is active so unmuting can play an
+      // immediate beat.
+      onHumStateChange: (active) => { humActive = active },
     }, {
       ...(config?.heartbeatMs === undefined ? {} : { heartbeatMs: config.heartbeatMs }),
       ...(config?.pendingFirstRechimeMs === undefined ? {} : { pendingFirstRechimeMs: config.pendingFirstRechimeMs }),

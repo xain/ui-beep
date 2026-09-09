@@ -99,7 +99,11 @@ document; a user override always wins over the row config.
 A **mute toggle** also sits in the composer's right tool row, beside the model
 selector: a speaker button that mutes/unmutes every beep (speaker with an X
 when muted). It mirrors the same durable `enabled` field as the Settings
-switch, so the two stay in sync; muting also stops a looping hum immediately.
+switch, so the two stay in sync; muting stops a looping hum immediately, and
+unmuting while an agent is busy plays a beat at once (no waiting for the next
+heartbeat interval). The **waiting chime also sounds when work finishes**: as
+soon as the last busy session goes idle, a chime tells you the agent is done
+and it is your turn again.
 
 ### Custom audio per voice
 
