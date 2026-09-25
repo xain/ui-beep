@@ -49,27 +49,11 @@ import type { MuteToggleInjected } from './MuteToggle.tsx'
 import { createBeepSettingsRowStore } from './settings-store.ts'
 import { en, zh, type BeepKey } from './locales.ts'
 
-/** Plugin config (cordis row `config:`). Every field optional. */
-export interface BeepConfig {
-  /** Master volume 0…1. Default 0.5. */
-  volume?: number
-  /** Silence everything while false. Default true. */
-  enabled?: boolean
-  /** Busy heartbeat period in ms. Default 4000. */
-  heartbeatMs?: number
-  /** Delay before the first re-chime of an unanswered interaction. Default 10000. */
-  pendingFirstRechimeMs?: number
-  /** Period between later re-chimes of an unanswered interaction. Default 30000. */
-  pendingRechimeMs?: number
-  /** How long after the last visible-text growth the output still counts as streaming. Default 1500. */
-  streamingPauseMs?: number
-}
-
 /** Required services: the sessions list, the pending-interaction registry, the
- *  Conversation assembly the beep watcher reads, the settings scope, the slot
- *  registry, and the locale service. */
+ *  Conversation assembly the beep watcher reads, the settings form seam, the
+ *  slot registry, and the locale service. */
 export const inject = [
-  'sessions', 'uiSession', 'uiConversation', 'slots', 'locale', 'settingsScope',
+  'sessions', 'uiSession', 'uiConversation', 'slots', 'locale', 'configForms',
 ]
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
@@ -85,30 +69,30 @@ const SETTINGS_NS = 'settings.beep'
 /**
  * Client plugin body: build the audio engine, bind the first-gesture arm,
  * watch session state for beep edges, and own the UI Beep settings section —
- * its values drive the engine live from the durable settings document.
+ * its values drive the engine live from the plugin Config.
  * @param ctx - client root context.
- * @param config - row config; falls back to defaults.
  */
-export function apply(ctx: Context, config?: BeepConfig): void {
-  const audio = new BeepAudio(config?.volume === undefined ? {} : { volume: config.volume })
+export function apply(ctx: Context): void {
+  const audio = new BeepAudio()
   audio.bindGesture()
-  audio.setEnabled(config?.enabled ?? DEFAULT_ENABLED)
+  audio.setEnabled(DEFAULT_ENABLED)
 
-  // ── durable settings section ────────────────────────────────────────────
-  // The scope resolves schema defaults → row config (composition base) →
-  // user overrides. The engine follows the resolved value live.
-  const host = ctx.settingsScope.bind<BeepSettings>({ namespace: BEEP_SETTINGS_NAMESPACE })
+  // ── live settings form ──────────────────────────────────────────────────
+  // DSH 0.1.7's seam: the plugin Config IS the settings document, reached
+  // through `configForms.get(<entry id>)` — same entry the Host `Config`
+  // schema declares, so a write from either side is one document.
+  const host = ctx.configForms.get<BeepSettings>(BEEP_SETTINGS_NAMESPACE)
   const store = createBeepSettingsRowStore()
   let bound: BoundActions<typeof store> | undefined
 
   // The composer mute toggle's reactive source: true = beeps muted.
-  const muteStore = createSnapshotStore<{ value: boolean }>({ value: !(config?.enabled ?? DEFAULT_ENABLED) })
+  const muteStore = createSnapshotStore<{ value: boolean }>({ value: !DEFAULT_ENABLED })
   // Whether a busy session is humming right now (fed by the watcher's
   // onHumStateChange). Used to play an immediate beat when beeps are
   // re-enabled, instead of waiting for the next heartbeat interval.
   let humActive = false
   // Tracks the previous enabled state so the mute→unmute edge is visible.
-  let wasEnabled = config?.enabled ?? DEFAULT_ENABLED
+  let wasEnabled = DEFAULT_ENABLED
 
   const sync = (): void => {
     const snapshot = host.getSnapshot()
@@ -153,11 +137,6 @@ export function apply(ctx: Context, config?: BeepConfig): void {
       // Remember whether the heartbeat is active so unmuting can play an
       // immediate beat.
       onHumStateChange: (active) => { humActive = active },
-    }, {
-      ...(config?.heartbeatMs === undefined ? {} : { heartbeatMs: config.heartbeatMs }),
-      ...(config?.pendingFirstRechimeMs === undefined ? {} : { pendingFirstRechimeMs: config.pendingFirstRechimeMs }),
-      ...(config?.pendingRechimeMs === undefined ? {} : { pendingRechimeMs: config.pendingRechimeMs }),
-      ...(config?.streamingPauseMs === undefined ? {} : { streamingPauseMs: config.streamingPauseMs }),
     })
   }, 'ui-beep: session state watcher')
 

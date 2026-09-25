@@ -9,7 +9,8 @@ import { describe, expect, it } from 'vitest'
 import { mkdtemp, writeFile, mkdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { handleAudio, handleBrowse, voicePathField } from '../src/host.ts'
+import { handleAudio, handleBrowse } from '../src/host.ts'
+import { Config, voicePathField, type BeepConfig } from '../src/beep-settings.ts'
 
 /** A minimal fake ServerResponse that captures the status and body. */
 function fakeRes() {
@@ -27,11 +28,9 @@ function fakeRes() {
   return { res: res as unknown as import('node:http').ServerResponse }
 }
 
-/** A fake settings service carrying one voice path. */
-function fakeCtx(paths: Record<string, string>) {
-  return {
-    get: (_name: string) => ({ get: () => paths }),
-  } as unknown as import('@deepseek-ai/cordis').Context
+/** A live plugin Config carrying the given custom audio paths. */
+function fakeConfig(paths: Record<string, string>): BeepConfig {
+  return Config(paths) as unknown as BeepConfig
 }
 
 function getReq(url: string) {
@@ -51,31 +50,31 @@ describe('GET /ui-beep/audio/:voice', () => {
     const dir = await mkdtemp(join(tmpdir(), 'ui-beep-audio-'))
     const file = join(dir, 'chime.wav')
     await writeFile(file, Buffer.from([0x52, 0x49, 0x46, 0x46]))
-    const ctx = fakeCtx({ chimePath: file })
+    const config = fakeConfig({ chimePath: file })
     const { res } = fakeRes()
-    await handleAudio(ctx, getReq('/ui-beep/audio/chime'), res, '/ui-beep/audio/chime')
+    await handleAudio(config, getReq('/ui-beep/audio/chime'), res, '/ui-beep/audio/chime')
     expect(res.status).toBe(200)
     expect(res.headers['content-type']).toBe('audio/wav')
   })
 
   it('answers 404 for a voice with no configured path', async () => {
-    const ctx = fakeCtx({})
+    const config = fakeConfig({})
     const { res } = fakeRes()
-    await handleAudio(ctx, getReq('/ui-beep/audio/tick'), res, '/ui-beep/audio/tick')
+    await handleAudio(config, getReq('/ui-beep/audio/tick'), res, '/ui-beep/audio/tick')
     expect(res.status).toBe(404)
   })
 
   it('answers 404 when the configured file is unreadable', async () => {
-    const ctx = fakeCtx({ humPath: '/no/such/file.mp3' })
+    const config = fakeConfig({ humPath: '/no/such/file.mp3' })
     const { res } = fakeRes()
-    await handleAudio(ctx, getReq('/ui-beep/audio/hum'), res, '/ui-beep/audio/hum')
+    await handleAudio(config, getReq('/ui-beep/audio/hum'), res, '/ui-beep/audio/hum')
     expect(res.status).toBe(404)
   })
 
   it('answers 404 for an unknown voice', async () => {
-    const ctx = fakeCtx({})
+    const config = fakeConfig({})
     const { res } = fakeRes()
-    await handleAudio(ctx, getReq('/ui-beep/audio/ding'), res, '/ui-beep/audio/ding')
+    await handleAudio(config, getReq('/ui-beep/audio/ding'), res, '/ui-beep/audio/ding')
     expect(res.status).toBe(404)
   })
 })
@@ -87,7 +86,7 @@ describe('GET /ui-beep/browse', () => {
     await writeFile(join(dir, 'ding.mp3'), Buffer.from([0]))
     await writeFile(join(dir, 'note.wav'), Buffer.from([0]))
     await writeFile(join(dir, 'readme.txt'), Buffer.from([0]))
-    const ctx = fakeCtx({})
+    const config = fakeConfig({})
     const { res } = fakeRes()
     const url = new URL(`/ui-beep/browse?path=${encodeURIComponent(dir)}`, 'http://localhost')
     await handleBrowse(getReq(url.pathname + url.search), res, url)
@@ -120,7 +119,7 @@ describe('GET /ui-beep/browse', () => {
   })
 
   it('reports failure for an unreadable directory', async () => {
-    const ctx = fakeCtx({})
+    const config = fakeConfig({})
     const { res } = fakeRes()
     const url = new URL('/ui-beep/browse?path=%2Fdefinitely%2Fnot%2Freal', 'http://localhost')
     await handleBrowse(getReq(url.pathname + url.search), res, url)
@@ -131,7 +130,7 @@ describe('GET /ui-beep/browse', () => {
   })
 
   it('rejects a non-absolute path', async () => {
-    const ctx = fakeCtx({})
+    const config = fakeConfig({})
     const { res } = fakeRes()
     const url = new URL('/ui-beep/browse?path=relative%2Fpath', 'http://localhost')
     await handleBrowse(getReq(url.pathname + url.search), res, url)

@@ -214,14 +214,21 @@ export function watchBeepState(
 
   // ── current-session conversation watcher: output tick + streaming flag ───
   // The Conversation binding's snapshot notifier fires on every assembled
-  // frame (rAF-flushed); the sessions list observable does not. Re-subscribe
+  // frame (rAF-flushed); the status map observable does not. Re-subscribe
   // whenever the current session changes or a binding becomes available.
+  //
+  // DSH 0.1.7 moved "current session" off `sessions.list` (its state no longer
+  // carries `current`) onto the renderer-facing scope adapter: `adapter.current`
+  // is a HostObservable whose binding key IS the current session id.
   let currentId: SessionId | undefined
   let stopConversation: (() => void) | undefined
   let lastTextLength = 0
 
-  const syncConversation = (state: { current: SessionId | undefined }): void => {
-    const current = state.current
+  const currentSessionId = (): SessionId | undefined =>
+    ctx.uiSession.adapter.current.getSnapshot().key as SessionId | undefined
+
+  const syncConversation = (): void => {
+    const current = currentSessionId()
     if (current === currentId && stopConversation !== undefined) return
     stopConversation?.()
     stopConversation = undefined
@@ -232,13 +239,15 @@ export function watchBeepState(
       evaluateHeartbeat()
       return
     }
-    // uiConversation.binding throws for an unknown session, so gate on the
-    // sessions binding first (a listed row without a materialized binding).
-    if (ctx.sessions.binding(current) === undefined) {
+    // uiConversation.binding throws for an unknown session, so gate on it: a
+    // listed row may have no materialized Conversation binding yet.
+    let conversation: ReturnType<typeof ctx.uiConversation.binding>
+    try {
+      conversation = ctx.uiConversation.binding(current)
+    } catch {
       evaluateHeartbeat()
       return
     }
-    const conversation = ctx.uiConversation.binding(current)
     const handleConversation = (): void => {
       const snapshot = conversation.snapshot.getSnapshot()
       const textLength = partialTextLength(snapshot)
@@ -256,23 +265,26 @@ export function watchBeepState(
     handleConversation() // establish the baseline immediately
   }
 
-  // ── list watcher: busy facts + pending-interaction chime ─────────────────
+  // ── status watcher: busy facts + pending-interaction chime ───────────────
+  // DSH 0.1.7 unified the two sources this watcher used to read
+  // (`sessions.list` for `running` + `uiSession.pendingInteractions`) into ONE
+  // observable: `uiSession.sessionStatus`, a Map of per-session
+  // `{ running, pendingInteraction }`. Both edges now come from a single pass.
+  //
   // `wasBusy` remembers whether any session was running on the previous pass,
   // so the transition into "nothing running any more" can fire the end-of-work
   // chime (the agent finished and it is the user's turn again).
   let wasBusy = false
-  const handleList = (): void => {
-    const state = ctx.sessions.list.getSnapshot()
-    const pending = ctx.uiSession.pendingInteractions.getSnapshot()
+  const handleStatus = (): void => {
+    const status = ctx.uiSession.sessionStatus.getSnapshot()
     const seen = new Set<string>()
     anyRunning = false
-    anyPending = pending.size > 0
-    for (const id of state.ids) {
-      const summary = state.byId[id]
-      if (summary === undefined) continue
+    anyPending = false
+    for (const [id, entry] of status) {
       seen.add(id)
-      if (summary.running) anyRunning = true
-      const isPending = pending.has(id)
+      if (entry.running === true) anyRunning = true
+      const isPending = entry.pendingInteraction !== undefined
+      if (isPending) anyPending = true
       const prev = tracked.get(id)
       const next: TrackedSession = { pending: isPending, baselined: prev?.baselined ?? false }
       if (!next.baselined) {
@@ -312,16 +324,23 @@ export function watchBeepState(
       callbacks.onBeep('chime')
     }
     wasBusy = anyRunning
-    syncConversation(state)
+    syncConversation()
     evaluateHeartbeat()
   }
-  const stopList = ctx.sessions.list.subscribe(handleList)
-  const stopPending = ctx.uiSession.pendingInteractions.subscribe(handleList)
-  handleList() // initial pass: heartbeat if a session is already busy
+
+  /** A current-session switch only re-points the conversation watcher. */
+  const handleCurrent = (): void => {
+    syncConversation()
+    evaluateHeartbeat()
+  }
+
+  const stopStatus = ctx.uiSession.sessionStatus.subscribe(handleStatus)
+  const stopCurrent = ctx.uiSession.adapter.current.subscribe(handleCurrent)
+  handleStatus() // initial pass: heartbeat if a session is already busy
 
   return () => {
-    stopList()
-    stopPending()
+    stopStatus()
+    stopCurrent()
     stopConversation?.()
     stopHeartbeat()
     for (const id of [...escalationHandles.keys()]) clearEscalation(id)

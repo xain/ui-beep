@@ -1,10 +1,14 @@
-# ui-beep profile bundle: mounts the client plugin as a web row. Applied after
+# ui-beep profile bundle: mounts the plugin as a web row. Applied after
 # dsh-base and dsh-web-app; the browser half is served by dsh-client-modules.
-# `volume` seeds the settings section's composition base — kept conservative so
-# a first-time user is not startled; anyone can raise it from the Settings page.
+#
+# `config:` IS the plugin's settings document (the DSH 0.1.7 settings form
+# seam): every field is declared `.volatile()` in the plugin's Config schema,
+# so a value written from the Settings page is adopted without restarting.
+# Defaults are kept conservative so a first-time user is not startled; anyone
+# can raise them from the Settings page.
 - insert:
     - id: ui-beep
       name: '@xain_npm/dsh-client-ui-beep'
       config:
-        volume: 0.4
         enabled: true
+        masterVolume: 0.4

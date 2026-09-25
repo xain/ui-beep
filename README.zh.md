@@ -4,6 +4,11 @@
 
 **dsh-beep** —— 面向 Web 界面的「AI 智能体心跳」声音化插件。它用三种程序化合成的 Web Audio 音色，以细微、不打扰的方式告诉你页面上各智能体正在做什么，无需盯着屏幕：
 
+> **要求 DSH ≥ 0.1.7。** 该版本用「profile 配置表单」取代了 `settingsScope` 服务
+> （及其背后的 `settings.yaml`）——插件的设置**就是它自己的 cordis `Config`**。
+> 0.5.0+ 已改用这套 seam（浏览器端 `configForms`、Host 端 `.volatile()` Config schema）；
+> 0.4.x 及更早版本在 0.1.7+ 上无法激活。
+
 > 本包是 [deepseek-harness](https://github.com/deepseek-ai/deepseek-harness) 仓库中
 > `ui-beep` 插件的独立可发布分支（MIT）。它使用自带的 `tsconfig.json` 与
 > `tsdown.config.ts` 构建（仓库内使用共享的 `clientBundle` 预设；本分支独立复刻了

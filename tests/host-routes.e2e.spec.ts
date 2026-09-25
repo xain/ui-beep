@@ -12,6 +12,7 @@ import { createServer, type Server } from 'node:http'
 import { afterEach, describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { registerBeepRoutes } from '../src/host.ts'
+import { Config, type BeepConfig } from '../src/beep-settings.ts'
 
 let server: Server | undefined
 let root: string | undefined
@@ -32,12 +33,8 @@ async function boot(): Promise<{ base: string; dir: string }> {
   await writeFile(join(dir, 'note.mp3'), Buffer.from([0x49, 0x44, 0x33]))
 
   const ctx = new Context()
-  // Fake settings: chimePath points into the temp dir.
-  const settings = {
-    get: (ns: string) => ns === 'ui-beep' ? { chimePath: join(dir, 'chime.wav') } : undefined,
-    register: () => ({ get: () => ({}), watch: () => () => {} }),
-  }
-  ctx.provide('settings', settings)
+  // Live plugin Config: chimePath points into the temp dir.
+  const config = Config({ chimePath: join(dir, 'chime.wav') }) as unknown as BeepConfig
   // Fake connection: trust everything (the real fence is tested elsewhere).
   ctx.provide('connection', { requestRejection: () => undefined })
   // Capture route registrations into a plain table instead of a real WebServer.
@@ -48,7 +45,7 @@ async function boot(): Promise<{ base: string; dir: string }> {
       return () => {}
     },
   })
-  registerBeepRoutes(ctx)
+  registerBeepRoutes(ctx, config)
   const audioRoute = routes.find(r => r.path.startsWith('/ui-beep/audio'))
   const browseRoute = routes.find(r => r.path === '/ui-beep/browse')
   if (audioRoute === undefined || browseRoute === undefined) {

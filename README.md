@@ -4,6 +4,12 @@ English | [中文](README.zh.md)
 
 **dsh-beep** — an agent-heartbeat sonification plugin for the DeepSeek Harness Web surface. It plays three procedural Web-Audio tones as a subtle, non-intrusive heartbeat that tells you what the agents on this page are doing without watching the screen:
 
+> **Requires DSH ≥ 0.1.7.** That release replaced the `settingsScope` service (and
+> the `settings.yaml` document behind it) with profile-backed configuration forms,
+> where a plugin's settings ARE its cordis `Config`. Versions 0.5.0+ use that seam
+> (`configForms` in the browser, a `.volatile()` Config schema on the host);
+> 0.4.x and earlier fail to activate on 0.1.7+.
+
 > This package is a standalone, publishable fork of the `ui-beep` plugin from the
 > [deepseek-harness](https://github.com/deepseek-ai/deepseek-harness) repository
 > (MIT). It builds with its own `tsconfig.json` + `tsdown.config.ts` (the in-repo
@@ -18,14 +24,15 @@ npm install @xain_npm/dsh-client-ui-beep
 ```
 
 Then mount it in your harness `cordis.yml` (or a `cordis.patch.yml` overlay) as a
-web client row:
+web client row. The `config:` block IS the plugin's settings document — every field
+is live, so a change made from the Settings page applies without a restart:
 
 ```yaml
 - id: ui-beep
   name: '@xain_npm/dsh-client-ui-beep'
   config:
-    volume: 0.5      # master gain 0…1
-    enabled: true    # false silences everything
+    enabled: true        # false silences everything
+    masterVolume: 0.4    # master gain 0…2 (100% = Web Audio full scale)
 ```
 
 ## Development

@@ -1,54 +1,61 @@
 /**
- * Beep settings model tests: the durable section schema, its defaults, and
- * the row-config composition base mapping.
+ * Beep settings model tests: the Host `Config` schema (the DSH 0.1.7 settings
+ * form seam), its defaults, and the live (`.volatile()`) field references.
  */
 import { describe, expect, it } from 'vitest'
 import {
-  BeepSettingsSchema, beepSettingsBase,
+  Config,
   BEEP_SETTINGS_NAMESPACE, DEFAULT_ENABLED, DEFAULT_MASTER_VOLUME, DEFAULT_VOICE_VOLUME,
 } from '../src/beep-settings.ts'
 
-describe('beep settings section', () => {
-  it('uses the ui-beep namespace', () => {
+/** Unwrap the Volatile references a validated Config hands out. */
+function plain(config: ReturnType<typeof Config>): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(config).map(([key, value]) => [key, (value as { get(): unknown }).get()]),
+  )
+}
+
+describe('beep settings Config', () => {
+  it('uses the ui-beep entry id as its namespace', () => {
+    // The browser form reads the same entry: `configForms.get('ui-beep')`.
     expect(BEEP_SETTINGS_NAMESPACE).toBe('ui-beep')
   })
 
-  it('accepts custom audio path fields and leaves them optional', () => {
-    const section = BeepSettingsSchema({
-      tickPath: '/music/tick.wav',
-      humPath: '/music/hum.mp3',
-    })
-    expect(section.tickPath).toBe('/music/tick.wav')
-    expect(section.humPath).toBe('/music/hum.mp3')
-    // A path never supplied stays absent from the output.
-    expect('chimePath' in section).toBe(false)
-  })
-
-  it('defaults every field when the section is empty', () => {
-    const section = BeepSettingsSchema()
+  it('defaults every field when no value is supplied', () => {
+    const section = plain(Config())
     expect(section.enabled).toBe(DEFAULT_ENABLED)
     expect(section.masterVolume).toBe(DEFAULT_MASTER_VOLUME)
     expect(section.tickVolume).toBe(DEFAULT_VOICE_VOLUME)
     expect(section.humVolume).toBe(DEFAULT_VOICE_VOLUME)
     expect(section.chimeVolume).toBe(DEFAULT_VOICE_VOLUME)
-    expect('tickPath' in section).toBe(false)
-    expect('humPath' in section).toBe(false)
-    expect('chimePath' in section).toBe(false)
+    expect(section.tickPath).toBeUndefined()
+    expect(section.humPath).toBeUndefined()
+    expect(section.chimePath).toBeUndefined()
+  })
+
+  it('accepts custom audio path fields', () => {
+    const section = plain(Config({
+      tickPath: '/music/tick.wav',
+      humPath: '/music/hum.mp3',
+    }))
+    expect(section.tickPath).toBe('/music/tick.wav')
+    expect(section.humPath).toBe('/music/hum.mp3')
+    expect(section.chimePath).toBeUndefined()
   })
 
   it('rejects volumes outside 0…2', () => {
-    expect(() => BeepSettingsSchema({ masterVolume: 2.5 })).toThrow(/<= 2/)
-    expect(() => BeepSettingsSchema({ tickVolume: -0.2 })).toThrow(/>?= 0/)
+    expect(() => Config({ masterVolume: 2.5 })).toThrow(/<= 2/)
+    expect(() => Config({ tickVolume: -0.2 })).toThrow(/>?= 0/)
   })
 
-  it('accepts a boundary-value section up to the 2.0 ceiling', () => {
-    const section = BeepSettingsSchema({
+  it('accepts a boundary-value config up to the 2.0 ceiling', () => {
+    const section = plain(Config({
       enabled: false,
       masterVolume: 2,
       tickVolume: 0,
       humVolume: 0.7,
       chimeVolume: 1.5,
-    })
+    }))
     expect(section.enabled).toBe(false)
     expect(section.masterVolume).toBe(2)
     expect(section.tickVolume).toBe(0)
@@ -56,25 +63,13 @@ describe('beep settings section', () => {
     expect(section.chimeVolume).toBe(1.5)
   })
 
-  it('maps the row config onto the composition base', () => {
-    const base = beepSettingsBase({ volume: 0.3, enabled: false })
-    expect(base).toEqual({
-      enabled: false,
-      masterVolume: 0.3,
-      tickVolume: DEFAULT_VOICE_VOLUME,
-      humVolume: DEFAULT_VOICE_VOLUME,
-      chimeVolume: DEFAULT_VOICE_VOLUME,
-    })
-  })
-
-  it('leaves the base undefined without a row config', () => {
-    expect(beepSettingsBase(undefined)).toBeUndefined()
-    expect(beepSettingsBase({})).toEqual({
-      enabled: DEFAULT_ENABLED,
-      masterVolume: DEFAULT_MASTER_VOLUME,
-      tickVolume: DEFAULT_VOICE_VOLUME,
-      humVolume: DEFAULT_VOICE_VOLUME,
-      chimeVolume: DEFAULT_VOICE_VOLUME,
-    })
+  it('hands out live (volatile) field references, not plain values', () => {
+    // `.volatile()` is what lets a Settings-page write be adopted without
+    // restarting the plugin: the Host half keeps reading the same reference.
+    const config = Config()
+    expect(config.masterVolume.get()).toBe(DEFAULT_MASTER_VOLUME)
+    // Every field is a Volatile reference (a reader), not a snapshot value.
+    expect(typeof config.masterVolume.get).toBe('function')
+    expect(typeof config.humPath.get).toBe('function')
   })
 })

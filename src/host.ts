@@ -24,10 +24,7 @@ import { dirname, isAbsolute } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import type {} from '@deepseek-ai/dsh-client-connection'
-import {
-  BEEP_SETTINGS_NAMESPACE, CHIME_PATH_FIELD, HUM_PATH_FIELD, TICK_PATH_FIELD,
-  type BeepVoice,
-} from './beep-settings.ts'
+import { voicePathField, type BeepConfig, type BeepVoice } from './beep-settings.ts'
 
 /** Route prefixes owned by this plugin. */
 export const AUDIO_ROUTE_PREFIX = '/ui-beep/audio'
@@ -50,15 +47,6 @@ const AUDIO_MIME: Record<string, string> = {
   '.opus': 'audio/ogg',
   '.weba': 'audio/webm',
   '.webm': 'audio/webm',
-}
-
-/** The settings field carrying one voice's custom audio path. */
-export function voicePathField(voice: BeepVoice): string {
-  switch (voice) {
-    case 'tick': return TICK_PATH_FIELD
-    case 'hum': return HUM_PATH_FIELD
-    case 'chime': return CHIME_PATH_FIELD
-  }
 }
 
 /** One entry in a browse listing. */
@@ -157,28 +145,24 @@ function sendMethodNotAllowed(res: ServerResponse, allowed: string): void {
 }
 
 /**
- * Read one voice's configured custom audio path from the settings document.
- * @param ctx - host context with the settings service.
+ * Read one voice's configured custom audio path from the plugin Config.
+ * @param config - the validated live plugin Config.
  * @param voice - which voice's path to read.
- * @returns the configured absolute path, or undefined when unset or not absolute.
+ * @returns the configured absolute path, or undefined when unset.
  */
-function configuredAudioPath(ctx: Context, voice: BeepVoice): string | undefined {
-  const settings = ctx.get('settings')
-  const section = settings?.get(BEEP_SETTINGS_NAMESPACE) as
-    | Partial<Record<string, unknown>>
-    | undefined
-  if (section === undefined) return undefined
-  const value = section[voicePathField(voice)]
+function configuredAudioPath(config: BeepConfig, voice: BeepVoice): string | undefined {
+  const field = voicePathField(voice) as keyof BeepConfig
+  const value = config[field]?.get()
   return typeof value === 'string' && value.length > 0 ? value : undefined
 }
 
 /**
  * Serve one voice's custom audio file, or 404 (the browser falls back).
- * The path is resolved from settings — never from the request — so the route
- * cannot read arbitrary files.
+ * The path is resolved from the plugin Config — never from the request — so the
+ * route cannot read arbitrary files.
  */
 export async function handleAudio(
-  ctx: Context, req: IncomingMessage, res: ServerResponse, pathname: string,
+  config: BeepConfig, req: IncomingMessage, res: ServerResponse, pathname: string,
 ): Promise<void> {
   if (req.method !== 'GET' && req.method !== 'HEAD') {
     sendMethodNotAllowed(res, 'GET, HEAD')
@@ -189,7 +173,7 @@ export async function handleAudio(
     sendJson(res, 404, { code: 'unknown-voice', message: `no voice ${voice}` })
     return
   }
-  const configured = configuredAudioPath(ctx, voice)
+  const configured = configuredAudioPath(config, voice)
   if (configured === undefined) {
     sendJson(res, 404, { code: 'no-path', message: `no custom audio configured for ${voice}` })
     return
@@ -318,15 +302,16 @@ function ancestryCrumbs(target: string): string[] {
 /**
  * Register the audio and browse routes on the host web server.
  * @param ctx - host context (must provide `webServer` and `connection`).
+ * @param config - the validated live plugin Config (audio paths are read per request).
  */
-export function registerBeepRoutes(ctx: Context): void {
+export function registerBeepRoutes(ctx: Context, config: BeepConfig): void {
   ctx.effect(() => ctx.webServer.register({
     kind: 'prefix',
     path: AUDIO_ROUTE_PREFIX,
     handler: (req, res) => {
       if (rejected(ctx, req, res)) return
       const pathname = new URL(String(req.url), 'http://localhost').pathname
-      void handleAudio(ctx, req, res, pathname)
+      void handleAudio(config, req, res, pathname)
     },
   }), 'ui-beep: GET /ui-beep/audio/:voice')
 

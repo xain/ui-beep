@@ -26,40 +26,70 @@ afterEach(() => { vi.useRealTimers() })
 /** One streaming frame's content: visible text (reasoning is not ticked). */
 type StreamFrame = { text?: string } | null
 
-/** Minimal snapshot-shaped client double with mutable list/pending/conversation faces. */
+/**
+ * Minimal client double over the DSH 0.1.7 session-status surface.
+ *
+ * The watcher used to read two sources (`sessions.list` for `running` and
+ * `uiSession.pendingInteractions`); 0.1.7 unified them into ONE observable —
+ * `uiSession.sessionStatus`, a Map of `{ running, pendingInteraction }` — and
+ * moved "current session" onto the renderer scope adapter
+ * (`adapter.current`, whose binding `key` is the session id).
+ */
 function makeCtx() {
-  let snapshot: {
-    ids: string[]
-    byId: Record<string, { running: boolean }>
-    current?: string
-  } = { ids: [], byId: {} }
-  const listListeners = new Set<() => void>()
-  /** Per-session pending interactions (uiSession.pendingInteractions). */
-  let pending = new Map<string, { key: string; kind: string; sessionId: string }>()
-  const pendingListeners = new Set<() => void>()
+  /** Per-session status: the single source the watcher now reads. */
+  let status = new Map<string, {
+    running: boolean
+    pendingInteraction?: { key: string; kind: string; sessionId: string }
+  }>()
+  const statusListeners = new Set<() => void>()
+  /** Current-session binding; `key` is the session id (undefined = none). */
+  let current: { key: string | undefined } = { key: undefined }
+  const currentListeners = new Set<() => void>()
   /** Per-session conversation observers; the spec drives them via `stream()`. */
   const conversations = new Map<string, { partial: StreamFrame }>()
   const conversationListeners = new Map<string, Set<() => void>>()
 
+  const notifyStatus = (): void => { for (const fn of [...statusListeners]) fn() }
+
+  /** Rebuild the status map from a list-shaped snapshot (running flags). */
+  const applyList = (next: { ids: string[]; byId: Record<string, { running: boolean }> }): void => {
+    const rebuilt = new Map<string, { running: boolean; pendingInteraction?: { key: string; kind: string; sessionId: string } }>()
+    for (const id of next.ids) {
+      const prev = status.get(id)
+      rebuilt.set(id, {
+        running: next.byId[id]?.running ?? false,
+        ...(prev?.pendingInteraction === undefined ? {} : { pendingInteraction: prev.pendingInteraction }),
+      })
+    }
+    status = rebuilt
+  }
+
+  /** Replace every session's pending-interaction value with the given set. */
+  const applyPending = (ids: readonly string[]): void => {
+    const wanted = new Set(ids)
+    for (const [id, entry] of [...status]) {
+      status.set(id, wanted.has(id)
+        ? { running: entry.running, pendingInteraction: { key: `p-${id}`, kind: 'approval', sessionId: id } }
+        : { running: entry.running })
+    }
+  }
+
   return {
-    sessions: {
-      list: {
-        getSnapshot: () => snapshot,
+    uiSession: {
+      sessionStatus: {
+        getSnapshot: () => status,
         subscribe: (fn: () => void) => {
-          listListeners.add(fn)
-          return () => { listListeners.delete(fn) }
+          statusListeners.add(fn)
+          return () => { statusListeners.delete(fn) }
         },
       },
-      // The watcher only gates on binding presence before opening the
-      // conversation; a listed session is always bound in the double.
-      binding: (_id: string) => ({ session: { getSnapshot: () => ({ sessionId: _id }), subscribe: () => () => {} } }),
-    },
-    uiSession: {
-      pendingInteractions: {
-        getSnapshot: () => pending,
-        subscribe: (fn: () => void) => {
-          pendingListeners.add(fn)
-          return () => { pendingListeners.delete(fn) }
+      adapter: {
+        current: {
+          getSnapshot: () => current,
+          subscribe: (fn: () => void) => {
+            currentListeners.add(fn)
+            return () => { currentListeners.delete(fn) }
+          },
         },
       },
     },
@@ -89,21 +119,24 @@ function makeCtx() {
         return { snapshot }
       },
     },
-    set(next: typeof snapshot) {
-      snapshot = next
-      for (const fn of [...listListeners]) fn()
+    set(next: { ids: string[]; byId: Record<string, { running: boolean }>; current?: string }) {
+      applyList(next)
+      // Legacy behaviour: a `set` replaces the whole snapshot, so an omitted
+      // `current` clears the selection.
+      current = { key: next.current }
+      notifyStatus()
     },
-    /** Drive the uiSession pending-interaction map (chime edges). */
+    /** Drive the per-session pending-interaction values (chime edges). */
     setPending(ids: readonly string[]) {
-      pending = new Map(ids.map(id => [id, { key: `p-${id}`, kind: 'approval', sessionId: id }]))
-      for (const fn of [...pendingListeners]) fn()
+      applyPending(ids)
+      notifyStatus()
     },
     /** Update list and pending in one observation (page-load baseline cases). */
-    setWithPending(nextList: typeof snapshot, ids: readonly string[]) {
-      snapshot = nextList
-      pending = new Map(ids.map(id => [id, { key: `p-${id}`, kind: 'approval', sessionId: id }]))
-      for (const fn of [...listListeners]) fn()
-      for (const fn of [...pendingListeners]) fn()
+    setWithPending(nextList: { ids: string[]; byId: Record<string, { running: boolean }> }, ids: readonly string[]) {
+      applyList(nextList)
+      applyPending(ids)
+      current = { key: nextList.ids[0] }
+      notifyStatus()
     },
     /** Drive the conversation observable for one session (streaming frames). */
     stream(id: string, frame: StreamFrame) {

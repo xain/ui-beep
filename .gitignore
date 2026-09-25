@@ -3,3 +3,6 @@ lib/
 *.tsbuildinfo
 *.log
 .DS_Store
+# Local scratch (profile backups, pnpm shims) — not part of the package.
+.dsh-fix-backup/
+.pnpm-bin/
