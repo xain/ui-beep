@@ -103,4 +103,81 @@ describe('BeepAudio', () => {
     const audio = new BeepAudio({ customPaths: { chime: '/sounds/chime.ogg' } })
     expect(audio.getCustomPaths()).toEqual({ chime: '/sounds/chime.ogg' })
   })
+
+  // ── preview bypasses the mute gate (control group: play does not) ────────
+
+  /**
+   * Install a minimal AudioContext double so `arm()` succeeds and the spec can
+   * count how many oscillators were actually scheduled.
+   */
+  function installFakeAudioContext(): { created: () => number; restore: () => void } {
+    let count = 0
+    /** A minimal AudioParam: the tone schedulers ramp these. */
+    const param = () => ({
+      value: 0,
+      setValueAtTime: () => {},
+      linearRampToValueAtTime: () => {},
+      setTargetAtTime: () => {},
+    })
+    const gainNode = () => ({ gain: param(), connect: () => {}, disconnect: () => {} })
+    const oscNode = () => {
+      count += 1
+      return { type: '', frequency: param(), connect: () => {}, disconnect: () => {}, start: () => {}, stop: () => {} }
+    }
+    const fake = {
+      currentTime: 0,
+      state: 'running',
+      destination: {},
+      resume: async () => {},
+      createGain: gainNode,
+      createOscillator: oscNode,
+      createBufferSource: () => ({ buffer: null, loop: false, connect: () => {}, disconnect: () => {}, start: () => {}, stop: () => {} }),
+    }
+    const globals = globalThis as { AudioContext?: unknown }
+    const previous = globals.AudioContext
+    globals.AudioContext = function FakeAudioContext() { return fake }
+    return {
+      created: () => count,
+      restore: () => {
+        if (previous === undefined) delete globals.AudioContext
+        else globals.AudioContext = previous
+      },
+    }
+  }
+
+  it('preview still sounds while beeps are muted, unlike play', () => {
+    const fake = installFakeAudioContext()
+    try {
+      const audio = new BeepAudio()
+      audio.setEnabled(false)
+
+      // Control group: a normal play is gated by the mute switch.
+      const beforePlay = fake.created()
+      audio.play('tick')
+      expect(fake.created()).toBe(beforePlay)
+
+      // Preview is an explicit user action: it must audition even while muted.
+      audio.preview('tick')
+      expect(fake.created()).toBeGreaterThan(beforePlay)
+    } finally {
+      fake.restore()
+    }
+  })
+
+  it('preview still sounds while muted for a voice with custom audio configured', () => {
+    const fake = installFakeAudioContext()
+    try {
+      const audio = new BeepAudio()
+      // A configured path makes preview take the custom-audio branch; with no
+      // decoded buffer yet it falls back to the built-in tone, which must also
+      // not be gated by the mute switch.
+      audio.setCustomAudio('chime', '/music/chime.wav')
+      audio.setEnabled(false)
+      const before = fake.created()
+      audio.preview('chime')
+      expect(fake.created()).toBeGreaterThan(before)
+    } finally {
+      fake.restore()
+    }
+  })
 })

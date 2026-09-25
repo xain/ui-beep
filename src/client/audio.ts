@@ -297,12 +297,19 @@ export class BeepAudio {
    * for hum) or the built-in tone, at the current voice/master gain. Used by
    * the Settings page's preview buttons, so a looping hum preview does not
    * keep playing.
+   *
+   * Unlike {@link play}, a preview is NOT gated by {@link setEnabled}: you
+   * audition a sound precisely when deciding whether to turn beeps on, so the
+   * mute switch must not silence the audition. The master and per-voice gains
+   * still apply, so what you hear is what the voice will sound like.
    * @param voice - which voice to audition.
    */
   preview(voice: BeepVoice): void {
+    // A preview click is itself a user gesture, so arm the engine directly
+    // rather than waiting for the document-level listener.
+    this.arm()
     const ctx = this.ctx
     if (ctx === undefined || this.master === undefined) return
-    if (!this.enabled) return
     const gain = this.voiceVolumes[voice]
     const path = this.customPaths[voice]
     if (path !== undefined) {
