@@ -38,7 +38,7 @@ npm install @xain_npm/dsh-client-ui-beep
 - id: ui-beep
   name: '@xain_npm/dsh-client-ui-beep'
   config:
-    enabled: true        # false 时全部静音
+    enabled: true        # 每浏览器的默认值（各浏览器各自保存自己的开关）
     masterVolume: 0.4    # 主音量 0…2（100% = Web Audio 标称满幅）
 ```
 
@@ -91,7 +91,7 @@ npm publish               # prepublishOnly 会先跑 build + test
 - id: ui-beep
   name: '@xain_npm/dsh-client-ui-beep'
   config:
-    enabled: true        # false 时全部静音（静音开关写的就是这个字段）
+    enabled: true        # 「从未选择过的浏览器」的初始默认值（见下）
     masterVolume: 0.4    # 主音量 0…2，叠加到每种音色之上
     tickVolume: 1        # 流式输出提示音音量 0…2
     humVolume: 1         # 工作心跳音量 0…2
@@ -100,6 +100,27 @@ npm publish               # prepublishOnly 会先跑 build + test
     humPath: ''
     chimePath: ''
 ```
+
+### 开关是「每个浏览器各自一份」
+
+`enabled` **不是**共享开关——它是「从未选择过的浏览器」的*初始默认值*。一旦你在
+某个浏览器里拨动过开关，**该浏览器就把自己的选择存进 `localStorage`**，此后
+Host 里的那个值对它不再起作用：
+
+```
+设置页开关   ┐
+            ├─→ localStorage（每浏览器）→ 各设备互不影响，
+输入框小喇叭 ┘                        同一浏览器内两处永远一致
+      ↑
+Host config.enabled = 仅作初始默认值
+```
+
+原因：声音是从**这个**浏览器发出来的，就该由**这个**浏览器决定。这也意味着点击
+**立即生效**——不需要往返 Host，而往返正是手机端按钮不可靠的原因。手机静音了，
+电脑照常响；同一浏览器内的两处 UI 永远显示同一个状态。
+
+该选择**跨刷新、跨重启永久保存**。无痕窗口（或存储被禁用）下会退化为「仅本次
+会话有效」，而不是报错。
 
 **设置 → 提示音** 页面管理同一份数据：一个启用开关、一个总音量，以及每个
 模式各自的音量（流式输出提示音 / 工作提示音 / 等待输入提示音），均为 0–200%
@@ -112,9 +133,9 @@ npm publish               # prepublishOnly 会先跑 build + test
 > 不再放进 Config（它们属于调参，不是用户设置）。
 
 输入框右下角（模型选择器旁边）还有一个**静音开关**：小喇叭按钮，点击切换
-全部提示音静音（静音时喇叭带叉）。它与设置页的启用开关共用同一个 `enabled`
-字段，二者保持同步；静音会立即停止循环中的工作心跳，取消静音时若 Agent 正在
-工作会立即响起一拍（无需等待下一个心跳间隔）。
+**本浏览器**的提示音静音（静音时喇叭带叉）。它与设置页的启用开关读写的是
+同一个本机状态，因此二者永远不会不一致；静音会立即停止循环中的工作心跳，
+取消静音时若 Agent 正在工作会立即响起一拍（无需等待下一个心跳间隔）。
 
 ### 每个模式的自定义音频
 
@@ -141,6 +162,9 @@ Host 端通过两条 loopback、浏览器鉴权的路由（`GET /ui-beep/audio/:
 
 ## 版本历史
 
+- **0.6.0** —— 开关改为**每个浏览器各自一份**（`localStorage`）：各设备独立控制
+  自己的提示音，设置页开关与输入框小喇叭永远不会不一致。Host 的 `enabled` 字段
+  降级为「从未选择过的浏览器」的默认值。另：静音状态下也能试听。
 - **0.5.0** —— 迁移到 DSH 0.1.7 的 settings seam（破坏性变更：要求
   DSH ≥ 0.1.7 / cordis ≥ 4.0.4）。Host 设置改为插件自己的 Config schema；
   浏览器端改用 `ctx.configForms`；watcher 改用 `uiSession.sessionStatus`。

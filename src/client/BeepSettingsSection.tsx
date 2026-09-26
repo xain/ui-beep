@@ -82,12 +82,16 @@ export function BeepSettingsSection({ t, useStore, setEnabled, setVolume, previe
           <div className={css.title}>{t('enabled.title')}</div>
           <div className={css.desc}>{t('enabled.description')}</div>
         </div>
+        {/*
+          The switch is per-browser (localStorage), so it stays clickable even
+          when the Host document refuses writes — and it is the same state the
+          composer speaker button shows.
+        */}
         <button
           type="button"
           role="switch"
           aria-checked={state.enabled}
           aria-label={t('enabled.title')}
-          disabled={!writable}
           className={css.switch}
           data-on={state.enabled ? 'true' : undefined}
           onClick={() => { setEnabled?.(!state.enabled) }}

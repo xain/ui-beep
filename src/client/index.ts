@@ -33,7 +33,6 @@ import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 // Type-only: pulls the composer `conversation.input.right` slot declaration.
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
-import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { BoundActions } from '@deepseek-ai/dsh-client-ui-slots'
 import type { TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 import {
@@ -42,6 +41,7 @@ import {
 } from '../beep-settings.ts'
 import { BeepAudio, type BeepVoice } from './audio.ts'
 import { watchBeepState } from './watch.ts'
+import { localEnabled } from './enabled-store.ts'
 import { BeepSettingsSection } from './BeepSettingsSection.tsx'
 import type { BeepSettingsSectionInjected } from './BeepSettingsSection.tsx'
 import { MuteToggle } from './MuteToggle.tsx'
@@ -75,7 +75,6 @@ const SETTINGS_NS = 'settings.beep'
 export function apply(ctx: Context): void {
   const audio = new BeepAudio()
   audio.bindGesture()
-  audio.setEnabled(DEFAULT_ENABLED)
 
   // ── live settings form ──────────────────────────────────────────────────
   // DSH 0.1.7's seam: the plugin Config IS the settings document, reached
@@ -85,14 +84,31 @@ export function apply(ctx: Context): void {
   const store = createBeepSettingsRowStore()
   let bound: BoundActions<typeof store> | undefined
 
-  // The composer mute toggle's reactive source: true = beeps muted.
-  const muteStore = createSnapshotStore<{ value: boolean }>({ value: !DEFAULT_ENABLED })
+  // ── the on/off switch is PER BROWSER ────────────────────────────────────
+  // The Host Config's `enabled` is only the default for a browser that has
+  // never chosen; once this browser picks, its own localStorage value wins.
+  // Both the Settings page switch and the composer speaker button read and
+  // write that one store, so they can never disagree — and a click applies
+  // immediately instead of waiting for a config round trip.
+  let hostEnabled = DEFAULT_ENABLED
+  /** What THIS browser should actually do. */
+  const effectiveEnabled = (): boolean => localEnabled.resolve(hostEnabled)
+
   // Whether a busy session is humming right now (fed by the watcher's
   // onHumStateChange). Used to play an immediate beat when beeps are
   // re-enabled, instead of waiting for the next heartbeat interval.
   let humActive = false
-  // Tracks the previous enabled state so the mute→unmute edge is visible.
-  let wasEnabled = DEFAULT_ENABLED
+  // Tracks the previous effective state so the mute→unmute edge is visible.
+  let wasEnabled = effectiveEnabled()
+  audio.setEnabled(wasEnabled)
+
+  /** Push the effective switch into the engine, beating on a false→true edge. */
+  const applyEnabled = (): void => {
+    const enabled = effectiveEnabled()
+    audio.setEnabled(enabled)
+    if (enabled && !wasEnabled && humActive) audio.play('hum')
+    wasEnabled = enabled
+  }
 
   const sync = (): void => {
     const snapshot = host.getSnapshot()
@@ -100,7 +116,8 @@ export function apply(ctx: Context): void {
     // Adopt the resolved value into the engine first so a settings change
     // applies before the UI mirrors it.
     if (section !== undefined) {
-      audio.setEnabled(section.enabled)
+      hostEnabled = section.enabled
+      applyEnabled()
       audio.setVolume(section.masterVolume)
       audio.setVoiceVolume('tick', section.tickVolume)
       audio.setVoiceVolume('hum', section.humVolume)
@@ -108,19 +125,15 @@ export function apply(ctx: Context): void {
       audio.setCustomAudio('tick', section.tickPath)
       audio.setCustomAudio('hum', section.humPath)
       audio.setCustomAudio('chime', section.chimePath)
-      muteStore.update(draft => { draft.value = !section.enabled })
-      // Unmute while a busy session is humming: play a beat at once so the
-      // user hears the state change instead of waiting for the interval.
-      if (section.enabled && !wasEnabled && humActive) {
-        audio.play('hum')
-      }
-      wasEnabled = section.enabled
     }
-    bound?.sync(section, snapshot.writable)
+    bound?.sync(section, snapshot.writable, effectiveEnabled())
   }
-  ctx.effect(() => host.subscribe(sync), 'ui-beep: settings scope adoption')
+  ctx.effect(() => host.subscribe(sync), 'ui-beep: settings form adoption')
+  // The local switch is the live one: a click re-applies at once, and also
+  // re-syncs the row store so both surfaces move together.
+  ctx.effect(() => localEnabled.subscribe(() => { applyEnabled(); sync() }), 'ui-beep: local switch adoption')
   // Adopt the initial resolved value (already folded by the Host) — the
-  // scope's first snapshot arrives before the mirror's first describe, so
+  // form's first snapshot arrives before the mirror's first describe, so
   // this also seeds the engine when a section exists.
   sync()
 
@@ -150,7 +163,9 @@ export function apply(ctx: Context): void {
     // first render (the store's sync action is idempotent).
     sync()
     return {
-      setEnabled: (value) => { void host.set('enabled', value) },
+      // The on/off switch is per-browser: write the local store, never the
+      // Host Config (which only supplies the initial default).
+      setEnabled: (value) => { localEnabled.set(value) },
       setVolume: (voice, value) => {
         const field = voice === 'master' ? 'masterVolume'
           : voice === 'tick' ? 'tickVolume'
@@ -177,9 +192,9 @@ export function apply(ctx: Context): void {
   }, BeepSettingsSection))
 
   // ── composer mute toggle ────────────────────────────────────────────────
-  // A speaker button beside the model selector mutes/unmutes every beep. The
-  // muted state mirrors the durable `enabled` field (muted = !enabled), so it
-  // stays in sync with the Settings page switch and the row config.
+  // A speaker button beside the model selector mutes/unmutes beeps IN THIS
+  // BROWSER. It reads and writes the same per-browser store as the Settings
+  // page switch, so the two always agree — and a click applies at once.
   ctx.slots.inject('conversation.input.right', () => ctx.slots.register({
     name: 'conversation.input.right',
     id: 'ui-beep-mute',
@@ -188,11 +203,11 @@ export function apply(ctx: Context): void {
     inject: (): MuteToggleInjected => ({
       hooks: {
         muted: {
-          getSnapshot: () => muteStore.getSnapshot().value,
-          subscribe: (listener) => muteStore.subscribe(listener),
+          getSnapshot: () => !effectiveEnabled(),
+          subscribe: (listener) => localEnabled.subscribe(listener),
         },
       },
-      setMuted: (muted) => { void host.set('enabled', !muted) },
+      setMuted: (muted) => { localEnabled.set(!muted) },
     }),
   }, MuteToggle))
 }

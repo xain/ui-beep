@@ -11,7 +11,11 @@ import {
 
 /** Store state mirrored from the beep settings scope. */
 export interface BeepSettingsRowState {
-  /** Whether any beep plays at all. */
+  /**
+   * Whether any beep plays **in this browser**. Per-device: it comes from the
+   * browser-local switch (localStorage), falling back to the Host Config value
+   * until this browser chooses — never written back to the Host.
+   */
   enabled: boolean
   /** Master gain 0…2. */
   masterVolume: number
@@ -35,7 +39,16 @@ export interface BeepSettingsRowState {
 
 /** Declared action shape giving the exported factory a stable return type. */
 type BeepSettingsRowActions = {
-  sync: (draft: BeepSettingsRowState, section: BeepSettings | undefined, writable: boolean) => void
+  /**
+   * Mirror one resolved form snapshot.
+   * @param enabled - this browser's effective switch (local, not the Host value).
+   */
+  sync: (
+    draft: BeepSettingsRowState,
+    section: BeepSettings | undefined,
+    writable: boolean,
+    enabled: boolean,
+  ) => void
 }
 
 /** Default row state shown before the scope resolves (or when it never does). */
@@ -59,11 +72,13 @@ export function createBeepSettingsRowStore(): EngineStoreHandle<BeepSettingsRowS
   return defineStore({
     init: initialRowState,
     actions: {
-      sync: (draft, section, writable) => {
+      sync: (draft, section, writable, enabled) => {
         draft.ready = section !== undefined
         draft.writable = writable
+        // The switch is per-browser, so it stands even before (or without) a
+        // resolved Host section.
+        draft.enabled = enabled
         if (section === undefined) return
-        draft.enabled = section.enabled
         draft.masterVolume = section.masterVolume
         draft.tickVolume = section.tickVolume
         draft.humVolume = section.humVolume

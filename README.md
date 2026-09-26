@@ -42,7 +42,7 @@ web client row:
 - id: ui-beep
   name: '@xain_npm/dsh-client-ui-beep'
   config:
-    enabled: true        # false silences every beep
+    enabled: true        # per-browser default (each browser keeps its own switch)
     masterVolume: 0.4    # master gain 0…2 (100% = Web Audio full scale)
 ```
 
@@ -98,7 +98,7 @@ are optional:
 - id: ui-beep
   name: '@xain_npm/dsh-client-ui-beep'
   config:
-    enabled: true        # false silences every beep (the mute switch writes this)
+    enabled: true        # DEFAULT for a browser that has never chosen (see below)
     masterVolume: 0.4    # master gain 0…2, applied on top of every voice
     tickVolume: 1        # streaming-output tick gain 0…2
     humVolume: 1         # working heartbeat gain 0…2
@@ -107,6 +107,28 @@ are optional:
     humPath: ''          #   (omit or leave empty to use the built-in tone)
     chimePath: ''
 ```
+
+### The on/off switch is per browser
+
+`enabled` is **not** a shared switch — it is the *default* for a browser that has
+never chosen. Once you flip the switch in a given browser, **that browser stores
+its own choice in `localStorage`** and the Host value stops mattering there:
+
+```
+Settings page switch  ┐
+                      ├─→ localStorage (per browser) → each device independent,
+composer speaker  ────┘                              the two surfaces never disagree
+          ↑
+Host config.enabled = initial default only
+```
+
+Why: the tone comes out of *this* browser, so *this* browser decides. It also
+means a click takes effect immediately — no round trip to the Host, which is what
+made the button unreliable on a phone. Mute your phone and your desktop keeps
+chiming; both surfaces in one browser always show the same state.
+
+The choice **persists across reloads and restarts**. In a private window (or with
+storage blocked) it degrades to session-only rather than failing.
 
 The **Settings → 提示音 (Sound)** page owns the same values: an enable switch, a
 master volume, and one volume per voice (streaming tick / working hum /
@@ -122,10 +144,11 @@ first-time user is not startled.
 > deliberately no longer part of the Config (they are tuning, not user settings).
 
 A **mute toggle** also sits in the composer's right tool row, beside the model
-selector: a speaker button that mutes/unmutes every beep (speaker with an X when
-muted). It mirrors the same `enabled` field as the Settings switch, so the two
-stay in sync; muting stops a looping hum immediately, and unmuting while an agent
-is busy plays a beat at once (no waiting for the next heartbeat interval).
+selector: a speaker button that mutes/unmutes beeps **in this browser**. It reads
+and writes the same local switch as the Settings page toggle, so the two can never
+disagree (speaker with an X when muted); muting stops a looping hum immediately,
+and unmuting while an agent is busy plays a beat at once (no waiting for the next
+heartbeat interval).
 
 ### Custom audio per voice
 
@@ -159,6 +182,10 @@ caches the decoded buffer.
 
 ## Versioning
 
+- **0.6.0** — the on/off switch became **per browser** (`localStorage`), so each
+  device controls its own beeps and the Settings toggle and composer speaker can
+  never disagree. The Host `enabled` field is now only the default for a browser
+  that has never chosen. Also: previewing auditions while muted.
 - **0.5.0** — migrated to the DSH 0.1.7 settings seam (breaking: requires
   DSH ≥ 0.1.7 / cordis ≥ 4.0.4). Host settings became the plugin's own Config
   schema; the browser half moved to `ctx.configForms`; the watcher moved to

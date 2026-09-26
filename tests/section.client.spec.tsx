@@ -56,7 +56,7 @@ function mount(overrides: Partial<{
     tickVolume: section.tickVolume,
     humVolume: section.humVolume,
     chimeVolume: section.chimeVolume,
-  }, section.writable)
+  }, section.writable, section.enabled)
   const setEnabled = vi.fn()
   const setVolume = vi.fn()
   const preview = vi.fn()
@@ -88,9 +88,11 @@ describe('BeepSettingsSection', () => {
     expect(screen.getByText('100%')).toBeTruthy()
   })
 
-  it('disables every control while the section is not writable', () => {
+  it('keeps the per-browser switch clickable while the Host document is not writable', () => {
     mount({ writable: false })
-    expect(screen.getByRole('switch')).toHaveProperty('disabled', true)
+    // The switch is per-browser (localStorage), so it never depends on the Host
+    // document accepting writes; only the Host-backed sliders go disabled.
+    expect(screen.getByRole('switch')).toHaveProperty('disabled', false)
     for (const slider of document.querySelectorAll('input[type="range"]')) {
       expect(slider).toHaveProperty('disabled', true)
     }
