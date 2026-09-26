@@ -9,6 +9,18 @@ English | [中文](README.zh.md)
 > where a plugin's settings ARE its cordis `Config`. Versions 0.5.0+ use that seam
 > (`configForms` in the browser, a `.volatile()` Config schema on the host);
 > 0.4.x and earlier fail to activate on 0.1.7+.
+>
+> The requirement is declared in `peerDependencies` — the DSH packages this plugin
+> actually reads at runtime, plus `cordis` — so an incompatible harness shows up as
+> a peer warning at install time instead of a plugin that silently never activates.
+> (The browser module-table seeds `dsh-client-store`, `dsh-client-ui-slots` and
+> `dsh-client-ui-primitives` are deliberately *not* declared: they are injected by
+> the web app at runtime and do not resolve from a profile's `node_modules`.)
+>
+> ⚠️ **Semver prerelease caveat.** `^0.1.7-rc.2` matches `0.1.7-rc.x` and the final
+> `0.1.7`, but **not** a future `0.1.8-rc.x`: semver only lets a prerelease in a
+> range match versions with the same `major.minor.patch` tuple. This range needs
+> widening whenever DSH publishes a new prerelease tuple.
 
 > This package is a standalone, publishable fork of the `ui-beep` plugin from the
 > [deepseek-harness](https://github.com/deepseek-ai/deepseek-harness) repository

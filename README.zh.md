@@ -8,6 +8,17 @@
 > （及其背后的 `settings.yaml`）——插件的设置**就是它自己的 cordis `Config`**。
 > 0.5.0+ 已改用这套 seam（浏览器端 `configForms`、Host 端 `.volatile()` Config schema）；
 > 0.4.x 及更早版本在 0.1.7+ 上无法激活。
+>
+> 该要求已写入 `peerDependencies`（插件运行时真正读取的 DSH 包 + `cordis`），
+> 因此 Harness 版本不兼容时会在**安装阶段**报 peer 警告，而不是插件静默激活失败。
+> （浏览器模块表的 seed——`dsh-client-store`、`dsh-client-ui-slots`、
+> `dsh-client-ui-primitives`——**刻意不声明**：它们由 web app 在运行时注入，
+> 在 profile 的 `node_modules` 里解析不到。）
+>
+> ⚠️ **semver 预发布版本的坑。** `^0.1.7-rc.2` 能匹配 `0.1.7-rc.x` 与正式版
+> `0.1.7`，但**匹配不上未来的 `0.1.8-rc.x`**：semver 规定范围里的预发布版本
+> 只能匹配 `major.minor.patch` 元组相同的版本。DSH 每次发布新的预发布元组时，
+> 这个范围都需要相应放宽。
 
 > 本包是 [deepseek-harness](https://github.com/deepseek-ai/deepseek-harness) 仓库中
 > `ui-beep` 插件的独立可发布分支（MIT）。它使用自带的 `tsconfig.json` 与
