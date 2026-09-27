@@ -190,11 +190,13 @@ caches the decoded buffer.
 
 ## Versioning
 
-- **0.6.0** — the on/off switch **and all four volumes** became **per browser**
-  (`localStorage`), so each device controls its own beeps and loudness, and the
-  Settings page and composer speaker can never disagree. The Host `enabled` /
-  `*Volume` fields are now only the defaults for a browser that has never chosen;
-  custom audio paths stay Host-owned. Also: previewing auditions while muted.
+- **0.6.1** — the four volume sliders became **per browser** too (same mechanism
+  as the switch), so each device also controls its own loudness. Only custom audio
+  paths still live on the Host.
+- **0.6.0** — the on/off switch became **per browser** (`localStorage`), so each
+  device controls its own beeps and the Settings page toggle and composer speaker
+  can never disagree. The Host `enabled` field became only the default for a
+  browser that has never chosen. Also: previewing auditions while muted.
 - **0.5.0** — migrated to the DSH 0.1.7 settings seam (breaking: requires
   DSH ≥ 0.1.7 / cordis ≥ 4.0.4). Host settings became the plugin's own Config
   schema; the browser half moved to `ctx.configForms`; the watcher moved to
