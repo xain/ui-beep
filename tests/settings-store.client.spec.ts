@@ -17,24 +17,31 @@ describe('createBeepSettingsRowStore', () => {
     })
   })
 
-  it('sync mirrors the resolved section, the writable flag, and the per-browser switch', () => {
+  it('mirrors the Host section paths but THIS browser\'s switch and volumes', () => {
     const store = createBeepSettingsRowStore().create()
-    // The Host section says disabled, but THIS browser's own switch is on: the
-    // row must show the local value — the Host field is only the default for a
-    // browser that has never chosen.
+    // The Host section says disabled and quiet, but this browser chose its own
+    // values: those win. Custom audio paths stay Host-owned.
     store.actions.sync({
       enabled: false,
       masterVolume: 0.2,
       tickVolume: 0.4,
       humVolume: 0.6,
       chimeVolume: 0.8,
-    }, true, true)
-    expect(store.getSnapshot()).toEqual({
+      tickPath: '/music/tick.wav',
+    }, true, {
       enabled: true,
-      masterVolume: 0.2,
+      masterVolume: 1.2,
       tickVolume: 0.4,
       humVolume: 0.6,
       chimeVolume: 0.8,
+    })
+    expect(store.getSnapshot()).toEqual({
+      enabled: true,
+      masterVolume: 1.2,
+      tickVolume: 0.4,
+      humVolume: 0.6,
+      chimeVolume: 0.8,
+      tickPath: '/music/tick.wav',
       ready: true,
       writable: true,
     })
@@ -42,16 +49,23 @@ describe('createBeepSettingsRowStore', () => {
 
   it('sync marks ready false and preserves the last values while the section is absent', () => {
     const store = createBeepSettingsRowStore().create()
-    store.actions.sync({
+    const local = {
       enabled: false,
       masterVolume: 0.2,
       tickVolume: 0.4,
       humVolume: 0.6,
       chimeVolume: 0.8,
-    }, true, false)
+    }
+    store.actions.sync({
+      enabled: true,
+      masterVolume: 1,
+      tickVolume: 1,
+      humVolume: 1,
+      chimeVolume: 1,
+    }, true, local)
     // A later unresolved snapshot (form reload) marks the section not-ready
     // without discarding the last accepted values (mirror semantics).
-    store.actions.sync(undefined, false, false)
+    store.actions.sync(undefined, false, local)
     expect(store.getSnapshot()).toEqual({
       enabled: false,
       masterVolume: 0.2,
@@ -63,12 +77,19 @@ describe('createBeepSettingsRowStore', () => {
     })
   })
 
-  it('keeps the per-browser switch usable before any Host section resolves', () => {
+  it('keeps the per-browser values usable before any Host section resolves', () => {
     const store = createBeepSettingsRowStore().create()
-    // No section yet (form still loading) but the local switch already applies.
-    store.actions.sync(undefined, false, true)
+    // No section yet (form still loading) but the local preferences apply.
+    store.actions.sync(undefined, false, {
+      enabled: true,
+      masterVolume: 1.5,
+      tickVolume: 0.4,
+      humVolume: 0.6,
+      chimeVolume: 0.8,
+    })
     const snapshot = store.getSnapshot()
     expect(snapshot.enabled).toBe(true)
+    expect(snapshot.masterVolume).toBe(1.5)
     expect(snapshot.ready).toBe(false)
   })
 })

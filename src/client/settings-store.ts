@@ -8,22 +8,23 @@ import {
   DEFAULT_ENABLED, DEFAULT_MASTER_VOLUME, DEFAULT_VOICE_VOLUME,
   type BeepSettings,
 } from '../beep-settings.ts'
+import type { LocalBeepSettings } from './local-store.ts'
 
 /** Store state mirrored from the beep settings scope. */
 export interface BeepSettingsRowState {
   /**
    * Whether any beep plays **in this browser**. Per-device: it comes from the
-   * browser-local switch (localStorage), falling back to the Host Config value
-   * until this browser chooses — never written back to the Host.
+   * browser-local preference document (localStorage), falling back to the Host
+   * Config value until this browser chooses — never written back to the Host.
    */
   enabled: boolean
-  /** Master gain 0…2. */
+  /** Master gain 0…2 in this browser (per-device, like `enabled`). */
   masterVolume: number
-  /** Streaming-output tick gain 0…2. */
+  /** Streaming-output tick gain 0…2 in this browser. */
   tickVolume: number
-  /** Working heartbeat hum gain 0…2. */
+  /** Working heartbeat hum gain 0…2 in this browser. */
   humVolume: number
-  /** Awaiting-input chime gain 0…2. */
+  /** Awaiting-input chime gain 0…2 in this browser. */
   chimeVolume: number
   /** Custom audio path for the streaming tick; undefined = built-in tone. */
   tickPath?: string
@@ -41,13 +42,13 @@ export interface BeepSettingsRowState {
 type BeepSettingsRowActions = {
   /**
    * Mirror one resolved form snapshot.
-   * @param enabled - this browser's effective switch (local, not the Host value).
+   * @param local - this browser's effective preferences (local, not the Host values).
    */
   sync: (
     draft: BeepSettingsRowState,
     section: BeepSettings | undefined,
     writable: boolean,
-    enabled: boolean,
+    local: LocalBeepSettings,
   ) => void
 }
 
@@ -72,17 +73,18 @@ export function createBeepSettingsRowStore(): EngineStoreHandle<BeepSettingsRowS
   return defineStore({
     init: initialRowState,
     actions: {
-      sync: (draft, section, writable, enabled) => {
+      sync: (draft, section, writable, local) => {
         draft.ready = section !== undefined
         draft.writable = writable
-        // The switch is per-browser, so it stands even before (or without) a
-        // resolved Host section.
-        draft.enabled = enabled
+        // The switch and the volumes are per-browser, so they stand even
+        // before (or without) a resolved Host section.
+        draft.enabled = local.enabled
+        draft.masterVolume = local.masterVolume
+        draft.tickVolume = local.tickVolume
+        draft.humVolume = local.humVolume
+        draft.chimeVolume = local.chimeVolume
         if (section === undefined) return
-        draft.masterVolume = section.masterVolume
-        draft.tickVolume = section.tickVolume
-        draft.humVolume = section.humVolume
-        draft.chimeVolume = section.chimeVolume
+        // Custom audio paths stay Host-owned.
         if (section.tickPath === undefined) delete draft.tickPath
         else draft.tickPath = section.tickPath
         if (section.humPath === undefined) delete draft.humPath

@@ -30,6 +30,9 @@ function mount(overrides: Partial<{
   chimeVolume: number
   ready: boolean
   writable: boolean
+  tickPath: string
+  humPath: string
+  chimePath: string
 }> = {}) {
   const store = createBeepSettingsRowStore().create()
   const section: {
@@ -40,6 +43,9 @@ function mount(overrides: Partial<{
     chimeVolume: number
     ready: boolean
     writable: boolean
+    tickPath?: string
+    humPath?: string
+    chimePath?: string
   } = {
     enabled: true,
     masterVolume: 0.5,
@@ -50,13 +56,25 @@ function mount(overrides: Partial<{
     writable: true,
     ...overrides,
   }
+  // The Host section carries the audio paths; the switch and volumes are
+  // per-browser, so they come from the local document (the `overrides` here).
+  // The Host values are deliberately different, proving the local ones win.
   store.actions.sync({
+    enabled: !section.enabled,
+    masterVolume: 1,
+    tickVolume: 1,
+    humVolume: 1,
+    chimeVolume: 1,
+    ...(section.tickPath === undefined ? {} : { tickPath: section.tickPath }),
+    ...(section.humPath === undefined ? {} : { humPath: section.humPath }),
+    ...(section.chimePath === undefined ? {} : { chimePath: section.chimePath }),
+  }, section.writable, {
     enabled: section.enabled,
     masterVolume: section.masterVolume,
     tickVolume: section.tickVolume,
     humVolume: section.humVolume,
     chimeVolume: section.chimeVolume,
-  }, section.writable, section.enabled)
+  })
   const setEnabled = vi.fn()
   const setVolume = vi.fn()
   const preview = vi.fn()
@@ -180,7 +198,13 @@ describe('BeepSettingsSection', () => {
       humVolume: 0.8,
       chimeVolume: 1,
       humPath: '/music/heartbeat.mp3',
-    }, true)
+    }, true, {
+      enabled: true,
+      masterVolume: 0.5,
+      tickVolume: 0.3,
+      humVolume: 0.8,
+      chimeVolume: 1,
+    })
     view.rerender(
       <BeepSettingsSection
         t={makeT}

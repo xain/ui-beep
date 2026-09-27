@@ -36,12 +36,12 @@ import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { BoundActions } from '@deepseek-ai/dsh-client-ui-slots'
 import type { TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 import {
-  BEEP_SETTINGS_NAMESPACE, DEFAULT_ENABLED,
+  BEEP_SETTINGS_NAMESPACE, BEEP_SETTINGS_DEFAULTS,
   type BeepSettings,
 } from '../beep-settings.ts'
 import { BeepAudio, type BeepVoice } from './audio.ts'
 import { watchBeepState } from './watch.ts'
-import { localEnabled } from './enabled-store.ts'
+import { localBeep, type LocalBeepSettings } from './local-store.ts'
 import { BeepSettingsSection } from './BeepSettingsSection.tsx'
 import type { BeepSettingsSectionInjected } from './BeepSettingsSection.tsx'
 import { MuteToggle } from './MuteToggle.tsx'
@@ -84,54 +84,59 @@ export function apply(ctx: Context): void {
   const store = createBeepSettingsRowStore()
   let bound: BoundActions<typeof store> | undefined
 
-  // ── the on/off switch is PER BROWSER ────────────────────────────────────
-  // The Host Config's `enabled` is only the default for a browser that has
-  // never chosen; once this browser picks, its own localStorage value wins.
-  // Both the Settings page switch and the composer speaker button read and
-  // write that one store, so they can never disagree — and a click applies
-  // immediately instead of waiting for a config round trip.
-  let hostEnabled = DEFAULT_ENABLED
-  /** What THIS browser should actually do. */
-  const effectiveEnabled = (): boolean => localEnabled.resolve(hostEnabled)
+  // ── preferences are PER BROWSER ─────────────────────────────────────────
+  // The Host Config supplies defaults only. Once this browser touches the
+  // switch or a slider, its own localStorage value wins for that field. Both
+  // the Settings page and the composer speaker button read and write that one
+  // store, so they can never disagree — and a change applies immediately
+  // instead of waiting for a config round trip (that round trip is what made
+  // these controls unreliable on a phone).
+  let hostDefaults: BeepSettings = BEEP_SETTINGS_DEFAULTS
+  /** The preferences THIS browser should actually use. */
+  const effective = (): LocalBeepSettings => localBeep.resolve(hostDefaults)
 
   // Whether a busy session is humming right now (fed by the watcher's
   // onHumStateChange). Used to play an immediate beat when beeps are
   // re-enabled, instead of waiting for the next heartbeat interval.
   let humActive = false
   // Tracks the previous effective state so the mute→unmute edge is visible.
-  let wasEnabled = effectiveEnabled()
+  let wasEnabled = effective().enabled
   audio.setEnabled(wasEnabled)
 
-  /** Push the effective switch into the engine, beating on a false→true edge. */
-  const applyEnabled = (): void => {
-    const enabled = effectiveEnabled()
-    audio.setEnabled(enabled)
-    if (enabled && !wasEnabled && humActive) audio.play('hum')
-    wasEnabled = enabled
+  /** Push this browser's resolved preferences into the engine. */
+  const applyLocal = (): void => {
+    const settings = effective()
+    audio.setEnabled(settings.enabled)
+    // Unmute while a busy session is humming: beat at once so the state change
+    // is audible instead of waiting for the next interval.
+    if (settings.enabled && !wasEnabled && humActive) audio.play('hum')
+    wasEnabled = settings.enabled
+    audio.setVolume(settings.masterVolume)
+    audio.setVoiceVolume('tick', settings.tickVolume)
+    audio.setVoiceVolume('hum', settings.humVolume)
+    audio.setVoiceVolume('chime', settings.chimeVolume)
   }
 
   const sync = (): void => {
     const snapshot = host.getSnapshot()
     const section = snapshot.value
-    // Adopt the resolved value into the engine first so a settings change
-    // applies before the UI mirrors it.
     if (section !== undefined) {
-      hostEnabled = section.enabled
-      applyEnabled()
-      audio.setVolume(section.masterVolume)
-      audio.setVoiceVolume('tick', section.tickVolume)
-      audio.setVoiceVolume('hum', section.humVolume)
-      audio.setVoiceVolume('chime', section.chimeVolume)
+      hostDefaults = section
+      // Custom audio paths stay Host-owned: the files live on the machine
+      // running the harness, so they are not a per-device concern.
       audio.setCustomAudio('tick', section.tickPath)
       audio.setCustomAudio('hum', section.humPath)
       audio.setCustomAudio('chime', section.chimePath)
     }
-    bound?.sync(section, snapshot.writable, effectiveEnabled())
+    // Adopt the resolved values into the engine first so a change applies
+    // before the UI mirrors it.
+    applyLocal()
+    bound?.sync(section, snapshot.writable, effective())
   }
   ctx.effect(() => host.subscribe(sync), 'ui-beep: settings form adoption')
-  // The local switch is the live one: a click re-applies at once, and also
+  // Local preferences are the live ones: a change re-applies at once, and also
   // re-syncs the row store so both surfaces move together.
-  ctx.effect(() => localEnabled.subscribe(() => { applyEnabled(); sync() }), 'ui-beep: local switch adoption')
+  ctx.effect(() => localBeep.subscribe(() => { applyLocal(); sync() }), 'ui-beep: local preference adoption')
   // Adopt the initial resolved value (already folded by the Host) — the
   // form's first snapshot arrives before the mirror's first describe, so
   // this also seeds the engine when a section exists.
@@ -163,16 +168,18 @@ export function apply(ctx: Context): void {
     // first render (the store's sync action is idempotent).
     sync()
     return {
-      // The on/off switch is per-browser: write the local store, never the
-      // Host Config (which only supplies the initial default).
-      setEnabled: (value) => { localEnabled.set(value) },
+      // The switch and every volume are per-browser: write the local store,
+      // never the Host Config (which only supplies the initial defaults).
+      setEnabled: (value) => { localBeep.set('enabled', value) },
       setVolume: (voice, value) => {
         const field = voice === 'master' ? 'masterVolume'
           : voice === 'tick' ? 'tickVolume'
             : voice === 'hum' ? 'humVolume' : 'chimeVolume'
-        void host.set(field, value)
+        localBeep.set(field, value)
       },
       preview: (voice) => { audio.preview(voice) },
+      // Custom audio paths remain Host-owned: the files live on the machine
+      // running the harness, so a path is not a per-device preference.
       setCustomAudio: (voice, path) => {
         const field = voice === 'tick' ? 'tickPath'
           : voice === 'hum' ? 'humPath' : 'chimePath'
@@ -203,11 +210,11 @@ export function apply(ctx: Context): void {
     inject: (): MuteToggleInjected => ({
       hooks: {
         muted: {
-          getSnapshot: () => !effectiveEnabled(),
-          subscribe: (listener) => localEnabled.subscribe(listener),
+          getSnapshot: () => !effective().enabled,
+          subscribe: (listener) => localBeep.subscribe(listener),
         },
       },
-      setMuted: (muted) => { localEnabled.set(!muted) },
+      setMuted: (muted) => { localBeep.set('enabled', !muted) },
     }),
   }, MuteToggle))
 }

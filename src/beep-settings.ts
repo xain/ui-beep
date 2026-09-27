@@ -135,11 +135,25 @@ export interface BeepConfig {
   chimePath: Volatile<string | undefined>
 }
 
-/** The Host Config field carrying one voice's custom audio path. */
+/** The Host Config field carrying one voice's custom audio path.
+ * @param voice - which voice's path field to name.
+ */
 export function voicePathField(voice: BeepVoice): string {
   switch (voice) {
     case 'tick': return TICK_PATH_FIELD
     case 'hum': return HUM_PATH_FIELD
     case 'chime': return CHIME_PATH_FIELD
   }
+}
+
+/**
+ * Schema defaults as a plain document. The browser half folds its own
+ * per-browser choices over this before (or without) a resolved Host form.
+ */
+export const BEEP_SETTINGS_DEFAULTS: BeepSettings = {
+  enabled: DEFAULT_ENABLED,
+  masterVolume: DEFAULT_MASTER_VOLUME,
+  tickVolume: DEFAULT_VOICE_VOLUME,
+  humVolume: DEFAULT_VOICE_VOLUME,
+  chimeVolume: DEFAULT_VOICE_VOLUME,
 }
